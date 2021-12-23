@@ -19,6 +19,7 @@ int parent (int node) {
   return p | (1 << (D+1)) - 1;
 } 
 
+// constructing the tree 
 void nodeinfo(int node, int comm_size, int *treeheight, int *treesize, int* ancestor, int* left, int* right, int* layer, int* dual) {
   *treeheight = floor(log2(ceil(comm_size/2.0)));
   *treesize = pow(2,*treeheight+1) - 1;
@@ -53,6 +54,7 @@ void nodeinfo(int node, int comm_size, int *treeheight, int *treesize, int* ance
   if (*ancestor == -1) {
     // root node on right side
     if (delta != 0) *dual = *treesize/2;
+    // root node on left side
     else {
       *dual = node + *treesize;
       d = *layer-1;
@@ -68,6 +70,7 @@ void nodeinfo(int node, int comm_size, int *treeheight, int *treesize, int* ance
   }
 }
 
+// allreduce implementation
 void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm) {
   int sentup = 0;
   int recvdup = 0;
@@ -83,6 +86,7 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
   int node, ancestor, left, right, layer, dual, treesize, treeheight;
   MPI_Comm_rank(comm, &node);
   nodeinfo(node, comm_size, &treeheight, &treesize, &ancestor, &left, &right, &layer, &dual);
+  int ancestordepth = depth(ancestor%treesize);
 
   // printf("node %d, ancestor %d, left %d, right %d, layer %d, dual %d\n", node, ancestor, left, right, layer, dual);
   int typesize;
@@ -99,12 +103,11 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     // --- SENDING UP---
     // is node on the right side of parent to send up (even round => left child sends, odd round => right child sends)
     bool matchesEvenOdd = ancestor < node && round % 2 == 1 || ancestor > node && round % 2 == 0;
-    // is there data to be sent
-    bool hasBlocksToSend = sentup != blockcount && (recvdup >= 2 || layer == 0);
     // in case nodes between this and ancestor are missing, make sure the ancestor is ready to receive
     bool isAncestorReceiving = ancestor != -1 && round/2 >= depth(ancestor) - 1;
+    bool hasBlocksToSendUp = sentup != blockcount && (recvdup >= 2 || layer == 0);
 
-    bool shouldSendUp = matchesEvenOdd && hasBlocksToSend && isAncestorReceiving;
+    bool shouldSendUp = matchesEvenOdd && hasBlocksToSendUp && isAncestorReceiving;
 
 
     // --- RECEIVING UP---
@@ -130,21 +133,21 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     // are there unreceived blocks left for this node
     bool hasUnreceivedDown = recvddown != blockcount;
     // has the ancestor sent a block this round
-    bool hasSendingAncestor = ancestor != -1 && round/2 >= (2*treeheight-depth(ancestor%treesize));
+    bool hasSendingAncestor = ancestor != -1 && round/2 >= (2*treeheight-ancestordepth);
 
     bool shouldReceiveDown = matchesEvenOdd && hasUnreceivedDown && hasSendingAncestor && hasBroadcastStarted;
 
-    int send_up_size   = min(count - (sentup)*blocksize, blocksize);
-    int recv_up_size   = min(count - (recvdup/2)*blocksize, blocksize);
+    int send_up_size   = min(count - (sentup)*blocksize,     blocksize);
+    int recv_up_size   = min(count - (recvdup/2)*blocksize,  blocksize);
     int send_down_size = min(count - (sentdown/2)*blocksize, blocksize);
-    int recv_down_size = min(count - (recvddown)*blocksize, blocksize);
-    int swap_size      = min(count - swapped*blocksize, blocksize);
+    int recv_down_size = min(count - (recvddown)*blocksize,  blocksize);
+    int swap_size      = min(count - swapped*blocksize,      blocksize);
 
-    void* send_up_from     = value + typesize*blocksize*sentup;
-    void* recv_up_into     = bufup + typesize*blocksize*(recvdup/2);
+    void* send_up_from     = value   + typesize*blocksize*sentup;
+    void* recv_up_into     = bufup   + typesize*blocksize*(recvdup/2);
     void* send_down_from   = recvbuf + typesize*blocksize*(sentdown/2);
     void* recv_down_into   = recvbuf + typesize*blocksize*recvddown;
-    void* swap_from        = value + typesize*blocksize*swapped;
+    void* swap_from        = value   + typesize*blocksize*swapped;
     void* swap_into        = recvbuf + typesize*blocksize*swapped; 
 
     int ops = shouldSendUp << 3 | shouldReceiveUp << 2 | shouldSendDown << 1 | shouldReceiveDown;
@@ -221,7 +224,7 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
       }
     }
 
-    // increment recvdblocks even if one of the ancestors does not exists, to keep steps in sync
+    // increment recvdup/sentown even if other process does not exists, to keep steps in sync
     if (isReceiving && hasUnreceivedUp) recvdup++;
     if (shouldSendUp) sentup++;
     if (shouldReceiveDown) recvddown++;
