@@ -7,10 +7,9 @@
 
 #define min(X, Y) (((X) < (Y)) ? (X) : (Y))
 
-int blocksize = 2;
+int blocksize = 1;
 
 int depth(int val) {
-  // __builtin_ctz: index of the least significant set bit
   return __builtin_ctz(~val);
 }
 
@@ -94,11 +93,9 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
   void* bufup = malloc(typesize*count);
 
   int round = -1;
-  // int rounds = 6;
   int rounds = 2*(2*treeheight + blockcount);
 
   while (++round < rounds) {
-    MPI_Barrier(comm);
     // --- SENDING UP---
     // is node on the right side of parent to send up (even round => left child sends, odd round => right child sends)
     bool matchesEvenOdd = ancestor < node && round % 2 == 1 || ancestor > node && round % 2 == 0;
@@ -121,11 +118,6 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
 
     bool shouldReceiveUp = isReceiving && hasUnreceivedUp && hasDescendent;
 
-    int send_up_size = min(count - (sentup)*blocksize, blocksize);
-    int recv_up_size = min(count - (recvdup/2)*blocksize, blocksize);
-    int send_down_size = min(count - (sentdown/2)*blocksize, blocksize);
-    int recv_down_size = min(count - (recvddown)*blocksize, blocksize);
-
     // --- SENDING DOWN ---
     // is there data left to be sent
     bool hasBroadcastStarted = round/2 >= treeheight;
@@ -135,8 +127,6 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     bool shouldSendDown = hasDescendent && hasBlocksToSendDown && hasBroadcastStarted && isDescendentReceivingDown;
 
     // --- RECEIVING DOWN---
-    // is node on the right side of parent to receive down (even round => left child receives, odd round => right child receives)
-    // bool matchesEvenOdd = ancestor < node && round % 2 == 1 || ancestor > node && round % 2 == 0;
     // are there unreceived blocks left for this node
     bool hasUnreceivedDown = recvddown != blockcount;
     // has the ancestor sent a block this round
@@ -144,49 +134,90 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
 
     bool shouldReceiveDown = matchesEvenOdd && hasUnreceivedDown && hasSendingAncestor && hasBroadcastStarted;
 
-    void* block_up_root   = value + typesize*blocksize*(recvdup/2);
-    void* block_up_from   = value + typesize*blocksize*sentup;
-    void* block_up_to     = bufup + typesize*blocksize*(recvdup/2);
-    void* block_down_from = recvbuf + typesize*blocksize*(sentdown/2);
-    void* block_down_to   = recvbuf + typesize*blocksize*recvddown;
+    int send_up_size   = min(count - (sentup)*blocksize, blocksize);
+    int recv_up_size   = min(count - (recvdup/2)*blocksize, blocksize);
+    int send_down_size = min(count - (sentdown/2)*blocksize, blocksize);
+    int recv_down_size = min(count - (recvddown)*blocksize, blocksize);
+    int swap_size      = min(count - swapped*blocksize, blocksize);
+
+    void* send_up_from     = value + typesize*blocksize*sentup;
+    void* recv_up_into     = bufup + typesize*blocksize*(recvdup/2);
+    void* send_down_from   = recvbuf + typesize*blocksize*(sentdown/2);
+    void* recv_down_into   = recvbuf + typesize*blocksize*recvddown;
+    void* swap_from        = value + typesize*blocksize*swapped;
+    void* swap_into        = recvbuf + typesize*blocksize*swapped; 
+
+    int ops = shouldSendUp << 3 | shouldReceiveUp << 2 | shouldSendDown << 1 | shouldReceiveDown;
 
     // --- MPI CALLS ---
-    if (shouldSendUp && shouldReceiveUp) {
-      // printf("[%d] send up (%d:%lf) %d -> %d\n", round, sentup, ((double*)block_up_from)[0], node, ancestor);
+    // there has to be a better way of pairing up send/recv...
+    if ((ops & 0b1100) == 0b1100) {
+      // printf("[%d] send up (%d:%lf) %d -> %d\n", round, sentup, ((double*)send_up_from)[0], node, ancestor);
       // printf("[%d] recv up (%d:?) %d -> %d\n", round, (recvdup/2), node, descendent);
-      MPI_Sendrecv(block_up_from, send_up_size, datatype, ancestor, 0,
-                  block_up_to,    recv_up_size, datatype, descendent, 0,
+      MPI_Sendrecv(send_up_from, send_up_size, datatype, ancestor, 0,
+                  recv_up_into,  recv_up_size, datatype, descendent, 0,
                   comm, MPI_STATUS_IGNORE);
-    } else if (shouldSendUp) {
-      // printf("[%d] send up (%d:%lf) %d -> %d\n", round, sentup, ((double*)block_up_from)[0], node, ancestor);
-      MPI_Send(block_up_from, send_up_size, datatype, ancestor, 0, comm);
-    } else if (shouldReceiveUp) {
-      // printf("[%d] recv up (%d:?) %d -> %d\n", round, (recvdup/2), descendent, node);
-      MPI_Recv(block_up_to, recv_up_size, datatype, descendent, 0, comm, MPI_STATUS_IGNORE);
+      ops &= 0b0011;
     }
 
-    if (shouldSendDown && shouldReceiveDown) {
-      // printf("[%d] send down (%d:%lf) %d -> %d\n", round, sentdown/2, ((double*)block_down_from)[0], node, descendent);
-      // printf("[%d] recv down %d -> %d\n", round, node, ancestor);
-      MPI_Sendrecv(block_down_from, send_down_size, datatype, descendent, 0,
-                  block_down_to,    recv_down_size, datatype, ancestor, 0,
+    if ((ops & 0b0011) == 0b0011) {
+      // printf("[%d] send down (%d:%lf) %d -> %d\n", round, sentdown/2, ((double*)send_down_from)[0], node, descendent);
+      // printf("[%d] recv down (%d:?) %d -> %d\n", round, recvddown, ancestor, node);
+      MPI_Sendrecv(send_down_from, send_down_size, datatype, descendent, 0,
+                  recv_down_into,  recv_down_size, datatype, ancestor, 0,
                   comm, MPI_STATUS_IGNORE);
-    } else if (shouldSendDown) {
-      // printf("[%d] send down (%d:%lf) %d -> %d\n", round, sentdown/2, ((double*)block_down_from)[0], node, descendent);
-      MPI_Send(block_down_from, send_down_size, datatype, descendent, 0, comm);
-    } else if (shouldReceiveDown) {
-      // printf("[%d] recv down %d -> %d\n", round, ancestor, node);
-      MPI_Recv(block_down_to, recv_down_size, datatype, ancestor, 0, comm, MPI_STATUS_IGNORE);
+
+      ops &= 0b1100;
+    }
+
+    if ((ops & 0b1001) == 0b1001) {
+      // printf("[%d] send up (%d:%lf) %d -> %d\n", round, sentup, ((double*)send_up_from)[0], node, ancestor);
+      // printf("[%d] recv down (%d:?) %d -> %d\n", round, (recvdup/2), node, ancestor);
+      MPI_Sendrecv(send_up_from, send_up_size, datatype, ancestor, 0,
+                  recv_down_into,  recv_down_size, datatype, ancestor, 0,
+                  comm, MPI_STATUS_IGNORE);
+
+      ops &= 0b0110;
+    }
+
+    if ((ops & 0b0110) == 0b0110) {
+      // printf("[%d] send down (%d:%lf) %d -> %d\n", round, sentdown/2, ((double*)send_down_from)[0], node, descendent);
+      // printf("[%d] recv up (%d:?) %d -> %d\n", round, recvddown, descendent, node);
+      MPI_Sendrecv(send_down_from, send_down_size, datatype, descendent, 0,
+                  recv_up_into,  recv_up_size, datatype, descendent, 0,
+                  comm, MPI_STATUS_IGNORE);
+      ops &= 0b1001;
+    }
+
+    if ((ops & 0b1000) == 0b1000) {
+      // printf("[%d] send up (%d:%lf) %d -> %d\n", round, sentup, ((double*)send_up_from)[0], node, ancestor);
+      MPI_Send(send_up_from, send_up_size, datatype, ancestor, 0, comm);
+    }
+
+    if ((ops & 0b0100) == 0b0100) {
+      // printf("[%d] recv up (%d:?) %d -> %d\n", round, (recvdup/2), descendent, node);
+      MPI_Recv(recv_up_into, recv_up_size, datatype, descendent, 0, comm, MPI_STATUS_IGNORE);
+    }
+
+    if ((ops & 0b0010) == 0b0010) {
+      // printf("[%d] send down (%d:%lf) %d -> %d\n", round, sentdown/2, ((double*)send_down_from)[0], node, descendent);
+      MPI_Send(send_down_from, send_down_size, datatype, descendent, 0, comm);
+    }
+
+    if ((ops & 0b0001) == 0b0001) {
+      // printf("[%d] recv down (%d:?) %d -> %d\n", round, recvddown, ancestor, node);
+      MPI_Recv(recv_down_into, recv_down_size, datatype, ancestor, 0, comm, MPI_STATUS_IGNORE);
     }
 
     // --- LOCAL REDUCTION --- 
     if (shouldReceiveUp) {
+      void* reduce_into   = value + typesize*blocksize*(recvdup/2);
       // local reduction
       if (round % 2 == 0) {
-        MPI_Reduce_local(block_up_to, block_up_root, recv_up_size, datatype, op);
+        MPI_Reduce_local(recv_up_into, reduce_into, recv_up_size, datatype, op);
       } else {
-        MPI_Reduce_local(block_up_root, block_up_to, recv_up_size, datatype, op);
-        memcpy(block_up_root, block_up_to, recv_up_size*typesize);
+        MPI_Reduce_local(reduce_into, recv_up_into, recv_up_size, datatype, op);
+        memcpy(reduce_into, recv_up_into, recv_up_size*typesize);
       }
     }
 
@@ -200,25 +231,25 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     bool isRoot = ancestor == -1;
     bool hasNewReduct = round % 2 == 1 && recvdup != 0 && swapped != blockcount;
     bool hasSwappingStarted = (round+1)/2 >= treeheight;
-    bool shouldSwap = isRoot && hasNewReduct && hasSwappingStarted;
+    bool hasDual = dual != -1;
+    bool shouldSwap = isRoot && hasNewReduct && hasSwappingStarted && hasDual;
 
     if (shouldSwap) {
-      int swap_size = min(count - swapped*blocksize, blocksize);
-      // printf("[%d] swap %d <-> %d\n", round, node, dual);
-      block_down_from = recvbuf + typesize*blocksize*(sentdown/2);
-      void* block_swap_from = value + typesize*blocksize*swapped;
-      MPI_Sendrecv(block_swap_from, swap_size, datatype, dual, 0,
-                  block_up_to, swap_size, datatype, dual, 0,
+      // printf("[%d] swap %d <-> %d (%d:%lf)\n", round, node, dual, swapped, ((double*)swap_from)[0]);
+      MPI_Sendrecv(swap_from, swap_size, datatype, dual, 0,
+                  swap_into, swap_size, datatype, dual, 0,
                   comm, MPI_STATUS_IGNORE);
 
       if (node < treesize) {
-        MPI_Reduce_local(block_swap_from, block_up_to, swap_size, datatype, op);
-        memcpy(block_down_from, block_up_to, swap_size*typesize);
+        MPI_Reduce_local(swap_from, swap_into, swap_size, datatype, op);
       } else {
-        MPI_Reduce_local(block_up_to, block_swap_from, swap_size, datatype, op);
-        memcpy(block_down_from, block_swap_from, swap_size*typesize);
+        MPI_Reduce_local(swap_into, swap_from, swap_size, datatype, op);
+        memcpy(swap_into, swap_from, swap_size*typesize);
       }
 
+      swapped++;
+    } else if (isRoot && hasNewReduct && hasSwappingStarted) {
+      memcpy(swap_into, swap_from, swap_size*typesize);
       swapped++;
     }
   }
@@ -228,7 +259,7 @@ int main(int argc, char **argv) {
   // Initialize the MPI environment
   MPI_Init(&argc, &argv);
 
-  double in[] = { 2.0, 1.0, 3.0 };
+  double in[] = { 1.0, 2.0, 3.0 };
   double out[] = { 0.0, 0.0, 0.0 };
   AllReduce(in, out, 3, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 

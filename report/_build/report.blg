@@ -1,5 +1,0 @@
-[0] Config.pm:311> INFO - This is Biber 2.16
-[0] Config.pm:314> INFO - Logfile is 'build\report.blg'
-[111] biber-MSWIN32:340> INFO - === 
-[540] Utils.pm:411> ERROR - Cannot find control file 'build\report.bcf'! - Did latex run successfully on your .tex file before you ran biber?
-[540] Biber.pm:132> INFO - ERRORS: 1
