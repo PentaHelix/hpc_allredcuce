@@ -1,0 +1,12 @@
+{
+  "jupyter.jupyterServerType": "local",
+  "files.associations": {
+    "mpi.h": "c",
+    "cmath": "c",
+    "initializer_list": "c",
+    "type_traits": "c",
+    "xstring": "c",
+    "xtree": "c",
+    "xutility": "c"
+  }
+}

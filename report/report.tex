@@ -1,0 +1,354 @@
+\documentclass[twoside,twocolumn,hidelinks]{article}
+
+\usepackage[sc]{mathpazo} % Use the Palatino font
+\usepackage[T1]{fontenc} % Use 8-bit encoding that has 256 glyphs
+\linespread{1.05} % Line spacing - Palatino needs more space between lines
+\usepackage{microtype} % Slightly tweak font spacing for aesthetics
+
+\usepackage[english]{babel} % Language hyphenation and typographical rules
+\usepackage[normalem]{ulem}
+
+\usepackage[hmarginratio=1:1,top=32mm,columnsep=20pt]{geometry} % Document margins
+\usepackage[hang, small,labelfont=bf,up,textfont=it,up]{caption} % Custom captions under/above floats in tables or figures
+\usepackage{booktabs} % Horizontal rules in tables\usepackage[backend=biber]{biblatex}
+
+\usepackage{enumitem} % Customized lists
+\usepackage{tikz-qtree}
+\usepackage{tree-dvips}
+\setlist[itemize]{noitemsep} % Make itemize lists more compact
+\usepackage{titlesec} % Allows customization of titles
+\usepackage{biblatex}
+\usepackage{listings}
+% \renewcommand\thesection{\Roman{section}} % Roman numerals for the sections
+% \renewcommand\thesubsection{\roman{subsection}} % roman numerals for subsections
+\titleformat{\section}[block]{\large\scshape\centering}{\thesection.}{1em}{} % Change the look of the section titles
+\titleformat{\subsection}[block]{\large}{\thesubsection.}{1em}{} % Change the look of the section titles
+
+\usepackage{fancyhdr} % Headers and footers
+\pagestyle{fancy} % All pages have headers and footers
+\fancyhead{} % Blank out the default header
+% \fancyfoot[RO,LE]{\thepage} % Custom footer text
+
+\usepackage{titling} % Customizing the title section
+\addbibresource{bibliography.bib}
+
+\usepackage{hyperref} % For hyperlinks in the PDF
+\usepackage{url} % For hyperlinks in the PDF
+
+%----------------------------------------------------------------------------------------
+%	TITLE SECTION
+%----------------------------------------------------------------------------------------
+
+\setlength{\droptitle}{-4\baselineskip} % Move the title up
+
+\pretitle{\begin{center}\Huge\bfseries} % Article title formatting
+\posttitle{\end{center}} % Article title closing formatting
+\title{Implementation and Performance Analysis of Collective MPI Operations using Pipelining} % Article title
+\author{%
+\textsc{Jakob Kuen} \\[1ex] % Your name
+\normalsize TU Wien \\ % Your institution
+\normalsize \href{mailto:e01630056@student.tuwien.ac.at}{e01630056@student.tuwien.ac.at} % Your email address
+%\and % Uncomment if 2 authors are required, duplicate these 4 lines if more
+%\textsc{Jane Smith}\thanks{Corresponding author} \\[1ex] % Second author's name
+%\normalsize University of Utah \\ % Second author's institution
+%\normalsize \href{mailto:jane@smith.com}{jane@smith.com} % Second author's email address
+}
+\date{\today} % Leave empty to omit a date
+\renewcommand{\maketitlehookd}{}
+
+%----------------------------------------------------------------------------------------
+
+\begin{document}
+\nocite{*}
+
+% Print the title
+\maketitle
+
+%----------------------------------------------------------------------------------------
+%	ARTICLE CONTENTS
+%----------------------------------------------------------------------------------------
+
+\section*{Notation}
+In the interest of legibility I will use a simple shorthand notation when describing binary numbers in this report. Table \ref{tab:binary_shorthand} gives a brief summary through examples.
+
+\begin{table}[h]
+      \centering
+      \begin{tabular}{ll}
+            \toprule
+            Shorthand & Full number \\
+            \midrule
+            10001    & 10001 \\
+            $1_5$    & 11111  \\
+            $10_4$   & 10000  \\
+            $0_21_3$ & 00111  \\
+            \bottomrule
+            \label{tab:binary_shorthand}
+      \end{tabular}
+      \caption{Binary shorthand}
+\end{table}
+
+\section{Exercise 1}
+The objective of this exercise was to implement an MPI conforming \textit{Allreduce} \cite{mpi_allreduce} operation by decomposing it into a reduction and a broadcast stage. Both stages are based on a binary-tree approach, which will be described in the following subsections.
+
+\subsection{Binary tree}\label{sec:binary_tree}
+In order to effectively construct and pipeline the required collective operations, it is helpful to organize involved processes into a complete binary tree structure. 
+
+\begin{figure}
+      \centering
+      \begin{tikzpicture}
+            \Tree[.07
+                  [.03
+                        [.01 00 02 ]
+                        [.05 04 06 ]
+                  ]
+                  [.11
+                        [.09 08 10 ]
+                        [.13 12 14 ]
+                  ]
+            ]
+      \end{tikzpicture}
+      \caption{A complete binary tree with $2^4-1 = 15$ children}
+      \label{fig:tree_inorder}
+\end{figure}
+
+Figure \ref{fig:tree_inorder} shows a complete binary tree with each node indexed through in-order traversal. All processes involved in the collective operation are assigned to a node in the tree, based on its rank within the communicator\footnote{This works assuming there are $p = 2^n-1 \:|\: n \in \mathbb{N}$ processes which exactly fill the tree. Special handling is required for other $p$, which will be described in Section \ref{sec:handling_incomplete}}. This process mapping has three benefits when implementing a collective operation:
+\begin{itemize}
+      \item The tree structure helps to organize communication between nodes. A reduction can be thought of as data travelling up from the leaves to the root nodes, a broadcast as the opposite.
+      \item Reductions that are not commutative need to be processed in a way that preserves order. By reducing upwards in an in-order tree, this order is kept correctly.
+      \item Relevant tree operations such as finding a node's parent or its children can be implemented efficiently using bitwise techniques.
+\end{itemize}
+
+\subsection{Bitwise tree operations}\label{sec:bitwise_tree_operations}
+By construction of the in-order numbering, the index of a node is related to it's parent and child nodes. Figure \ref{fig:tree_inorder_binary} shows the same tree with its nodes in binary representation which illustrates how node properties can be read from its index. The following only describes how tree operations are performed, formal proofs are out of scope for this paper.
+
+\begin{figure}
+      \centering
+      \begin{tikzpicture}
+            \scriptsize
+            \Tree[.0111
+                  [.0011
+                        [.0001 0000 0010 ]
+                        [.0101 0100 0110 ]
+                  ]
+                  [.1011
+                        [.1001 1000 1010 ]
+                        [.1101 1100 1110 ]
+                  ]
+            ]
+      \end{tikzpicture}
+      \caption{Tree with binary numbering}
+      \label{fig:tree_inorder_binary}
+\end{figure}
+
+\subsubsection{Node Depth}
+A node's index has the form $...01_l$, where l is the layer the node is on. Here I define $layer := treeheight - depth - 1$. Since the treeheight is known, finding the depth of a node reduces to finding its layer which is given by the position of the first 0 in its index. This is implemented by taking the bitwise inverse of the index, and finding its least significant set bit using gcc's built-in \texttt{\_\_builtin\_ctz}.
+
+\subsubsection{Node Parent}
+Finding a nodes parent is slightly more complicated. Clearly, the parent is one layer higher up than the child. So the parent must have the form $...01_{l+1}$. What remains unclear is the left section of the index. However, simply setting the first $l+2$ bits of the node's index to $01_{l+1}$ already yields the parent index. Any bit at a position higher than $l+2$ relates to which subtree of the grandparent node node/parent are situated in. Since node and parent are always in the same subtree of the grandparent, these upper bits are the same for both.
+
+\subsubsection{Node children}
+A node at layer l has left and right subtrees, each with $2^l$ children in it. Again, the children must have the form $...01_{l-1}$. Furthermore, their bits starting from position $l+2$ must be identical to the parent. This leaves only the bit at position $l+1$ undefined, and setting it to either 0 or 1 yields the two children.
+
+\begin{table}[h]
+      \centering
+      \begin{tabular}{ll}
+            \toprule
+            relation & index \\
+            \midrule
+            parent & $1\underline{011}$  \\
+            base   & $10\underline{01}$  \\
+            child 0 & $10\mathbf{0}\underline{0}$  \\
+            child 1 & $10\mathbf{1}\underline{0}$  \\
+            \bottomrule
+      \end{tabular}
+      \caption{Node relationships}
+\end{table}
+
+Using these operations each process can quickly determine its parent and child processes with which it will communicate.
+
+\subsection{Reduction}
+In a reduction, each of the $p$ involved processors $p_i$ possesses one vector of data $d_i$. The reduction applies an operation to all of these vectors element-wise, reducing them to a single result. The vectors $d_i$ may be broken up into individual blocks, meaning processors may have to send multiple times to export all of their data. After completion, a single processor ends up with the final reduction result. Depending on the operations commutativity, the reduction must be performed in a way which keeps order of the operands.\\
+With the binary tree set up, a reduction can now be formulated. The reduction is composed of individual rounds, during which any processes may send or receive from others. A process can at most send and receive once per round. For a simple case of $p=3$ processors, the algorithm should proceed as follows:
+
+\begin{figure}
+      \centering
+      \begin{tikzpicture}
+            \Tree[.1 0 2 ]
+      \end{tikzpicture}
+      \caption{Simple binary tree}
+\end{figure}
+
+\begin{enumerate}
+      \item Node 1 receives the next unprocessed block of $d_0$ from its left child 0 and applies the reduction locally with its corresponding block of $d_1$
+      \item Node 1 receives the next unprocessed block of $d_2$ from its right child 2 and applies the reduction locally with its corresponding block of $d_1$
+      \item Repeat from step 1 until all blocks are have be processed
+\end{enumerate}
+
+Extending this algorithm for larger trees yields
+
+\begin{enumerate}
+      \item Each node receives a block from its left child, if that child has a block containing the reduction of all its children, then reduce locally
+      \item Each node receives a block from its right child, if that child has a block containing the reduction of all its children, then reduce locally
+      \item Each node that received left and right blocks now has a locally reduced block to send up to its parent 
+      \item Repeat from step 1 until all blocks are have be processed up to the root node
+\end{enumerate}
+
+In the first step, only leaf nodes can send up, since they have no children from which they have to gather data to reduce. After two rounds, nodes in layer one have received data from all children and can send up to their parents. This continues up the tree until eventually the root node can receive blocks from its 2 parents. \\
+
+To actually implement this approach, each processor needs to determine in which rounds in sends and/or receives - and where to/from. On a high level, this is accomplished using constraints. Each process starts at round 0, and determines if the conditions are met for it to send/receive - in which case it will call MPI\_Send/MPI\_Recv. Otherwise it will simply move on to the next round. If the conditions are defined correctly, all send/recv calls will line up with the other processors and the reduction proceeds as planned. The algorithm split up into two sections, one determining if the process should send, and the other if it should receive. Listing \ref{cod:constraints} gives a high-level view of the structure and constraints.
+
+\begin{lstlisting}[label=cod:constraints,language=C++,caption=Constraint based implementation,captionpos=b]
+int sentBlocks = 0
+int recvdBlocks = 0
+int node, parent, 
+    left, right, layer
+int blockcount
+for round in rounds:
+      bool shouldSend = ...
+      bool shouldReceive = ...
+
+      if shouldSend: 
+            send(...)
+            sentBlocks++
+      if shouldReceive: 
+            recv(...)
+            reduce_local(...)
+            recvdBlocks++
+
+\end{lstlisting}
+
+\texttt{sentBlocks} and \texttt{recvdBlocks} keep count of how many blocks have been sent/received by each node to determine which blocks will be sent/received next. Each node also knows its rank (=\texttt{node}), \texttt{parent}, \texttt{left} and \texttt{right} child nodes, and the \texttt{layer} it is on. These are computed as described in Section \ref{sec:binary_tree}. \texttt{blockcount} is the number of blocks the  vector is split up into. What is left now is to define how shouldSend and shouldReceive are determined. This may initially seem like a complicated task, but it can be broken down into a few simpler conditions which need to be met. 
+
+\subsubsection{Sending}
+Starting with shouldSend, the following conditions arise:
+
+\begin{itemize}
+      \item A node has blocks to send only if has received at least the first blocks from each its children, so a total of 2 received blocks. However, nodes in the first layer have no children and nothing to receive, so they can start sending immediately.\\\\
+      \texttt{recvdBlocks > 2 || layer == 0}\\
+      \item As long as a node has sent less than \texttt{blockcount} blocks, it has more blocks left to send. \\\\
+      \texttt{sentBlocks != blockcount}\\
+      \item A left child only sends up to the parent on even rounds, a right child only on odd ones. Determining whether a node is left or right of its parent can simply be determined by comparing indices. \\\\
+      \texttt{parent<node \&\& round\%2 == 1 ||} \\
+      \texttt{parent>node \&\& round\%2 == 0}\\
+      \item A node should only send if it has a parent \\
+      \texttt{parent != -1}
+\end{itemize}
+
+A node only sends if all of these conditions are met. 
+
+\subsubsection{Receiving}
+The same can be done to arrive at conditions for a node to receive data. In general, a node should receive if and only if one of its children is sending, so the logic should be quite similar.
+
+\begin{itemize}
+      \item A node should only receive if its children already have blocks to send up. Every two rounds, blocks move up one layer, so the first block arrive to the layer below in 2*(layer-1) rounds. \\\\
+      \texttt{round/2 >= layer - 1};
+      \item For each block, a node receives 2 corresponding blocks from its children. So in total, it needs to receive no more than blockcount*2 blocks. \\\\
+      \texttt{recvdblocks/2 != blockcount}
+      \item Leaf nodes have no children to receive from, which is indicated by \texttt{left = right = -1}. \\\\
+      \texttt{child != -1};
+\end{itemize}
+
+\texttt{child} is simply the left or right child, depending on if the current round is even or odd: \texttt{child = round \% 2 == 0 ? left : right}. With these conditions established, each process can run through the rounds, and determine if it needs to send/receive until all rounds are completed. In total, \texttt{rounds = 2*(treeheight + blockcount)} rounds are needed until the last block has moved from leaf to root. Since send/receive calls are blocking, rounds are implicitly synchronized and no node can get ahead of the rest. After all rounds are completed, the resulting reduction will be at the root node/process of the tree.
+
+\subsection{Broadcast}
+After the reduction is complete, a broadcast is necessary to move the result from the root process to all other processes. The implementation is analogous to the reduction, except that data flow is reversed - data now travels down from the root, until all blocks have reached the leaf nodes. The conditions for sending/receiving are therefore reversed.
+
+\subsubsection{Sending}
+\begin{itemize}
+      \item A node has blocks to send only if has received at least the first blocks from its parent However, the root node has no parent and nothing to receive, so it can start sending immediately.\\\\
+      \texttt{recvdblocks >= 1 || \\ layer == treeheight}\\
+      \item As long as a node has sent less than \texttt{blockcount/2} blocks (since each block gets sent once per child), it has more blocks left to send. \\\\
+      \texttt{sentblocks/2 != blockcount}\\
+      \item Leaf nodes have no children to send to, which is indicated by \texttt{left = right = -1}. \\\\
+      \texttt{child != -1}
+\end{itemize}
+
+\subsubsection{Receiving}
+\begin{itemize}
+      \item A node that is a left child should only receive from its parent on even rounds, and a right child only on odd rounds \\\\
+      \texttt{parent<node \&\& round\%2 == 1 || \\parent>node \&\& round\%2 == 0}\\
+      \item A node should only receive \texttt{blockcount} nodes, and not any more. \\\\
+      \texttt{recvdblocks != blockcount}\\
+      \item A node only receives if it has a parent that is ready to send this round.
+      \texttt{parent != -1 \&\& \\round/2 >= (treeheight-depth(parent))}\\
+\end{itemize}
+
+Each process proceeds exactly as with the reduction by iteration over all rounds, and issuing the send/receive operations it has determined from these conditions.
+
+\subsection{Handling incomplete trees}\label{sec:handling_incomplete}
+So far the assumption has been that the amount of processes involved in the operation neatly fit into a complete binary tree. Extending the algorithm to work on arbitrary in-order trees requires some extra constraints. The tree on which communication is modelled is still complete, however nodes in the tree which have \texttt{index >= no. of processors} do not have a corresponding process (a \textit{virtual node}). Figure \ref{fig:tree_missing_processes} illustrates how such a tree is constructed and how communication needs to be adapted to skip some nodes.
+
+\begin{figure}
+      \centering
+      \begin{tikzpicture}
+            \Tree[.\node (07) {07};
+                  [.03
+                        [.01 00 02 ]
+                        [.05 04 06 ]
+                  ]
+                  [.\sout{11}
+                        [.\node(09) {09}; 08 \sout{10} ]
+                        [.\sout{13} \sout{12} \sout{14} ]
+                  ]
+            ]
+      \draw [->, shorten >= 3pt, blue] (09) to [out=120,in=270] (07);
+      \end{tikzpicture}
+      \caption{A complete binary tree mapped to only 10 processes}
+      \label{fig:tree_missing_processes}
+\end{figure}
+
+Firstly, nodes >= 10 should not send or receive anything. This is trivial as no process mapped to the node means no MPI operations will be called from them. Secondly, communication from 09 needs to skip 11 and go to 07 instead. Similarly, 07 must communicate to 09 instead of 11. \\
+To accommodate this, when each process is initialized, it will check if its parent and child nodes are within the processor range - i.e. if the calculated indices are less than the process\_count. Should the parent be invalid (as would be the case when 09 calculates its parent to be 11), the real ancestor must be further up the tree meaning the parent needs to be calculated iteratively until a node mapping to a process is found. This will lead 09 to its ancestor 07. The procedure for children is similar. \\ The first insight is that only the right child can be a virtual node, since the left child has an index smaller than its parent. If the parent is non-virtual, so is its left child. If a node is virtual so is its right subtree, meaning if the right child is virtual, a real child must be somewhere in it's left subtree. This means the correct right descendent can be found by incrementally getting the left descendent of the right child until a non-virtual node is encountered. When 07 calculates its right child as 11 and determines it to be virtual, it calculates 11's next left child which is 09 and non-virtual. If a node cannot find any processes in it's right subtree, it will set it's right child to -1 signaling no communication is necessary.
+
+All conditions defined in the previous sections now have to be adapted by switching \texttt{child} to the more general \texttt{descendent}, and \texttt{parent} to \texttt{ancestor}. Additionally, sending in the reduction implementation needs an additional constraint to make sure the ancestor is ready to receive.
+\begin{itemize}
+      \item A node should only send if its ancestor is ready to receive.
+      \texttt{round/2 >= depth(ancestor) - 1}
+\end{itemize}
+
+\subsection{Correctness}
+To verify the correctness of this algorithm, the implementation was tested against the MPI\_Allreduce function, ensuring the same result for all combinations of various parameter settings. Each processes' vector elements were set to $v[i] = ((i + process\_rank) \% 10) + 1$
+
+\begin{table}[h]
+      \centering
+      \begin{tabular}{ll}
+            \toprule
+            Parameter & Values \\
+            \midrule
+            vectorsize   & 1,2,...,9999,10000 \\
+            blocksize    & 1,2,...,9999,10000  \\
+            processes    & 2,3,...,9,10  \\
+            \bottomrule
+      \end{tabular}
+      \caption{Parameter values}
+\end{table}
+
+\subsection{Performance Modelling with the Pipeline Lemma}
+The pipeline lemma can be used to model the running time of a pipelined algorithm, using a linear transmission cost model. The lemma states that given
+\begin{itemize}
+      \item k := maximum latency in rounds until a process receives the first block
+      \item s := number of rounds between receiving new blocks
+      \item m := size of input vectors
+      \item $\alpha,\beta$ := linear transmission cost model
+\end{itemize}
+the performance is expressed by
+\begin{equation}
+      (k-s)\alpha + 2\sqrt{s(k-s)\alpha\beta m} + s\beta m
+\end{equation}
+Both stages of the allreduce implementation (reduce and broadcast) exhibit a latency $k=2*log(p)$ where p is the number of processors and $s=2$. Summing the running time for both stages yields
+\begin{equation}
+      2(4log(p)-4\alpha + 2\sqrt{(4log(p)-4)\alpha\beta m} + 2\beta m)
+\end{equation}
+Using the pipeline lemma one can also determine the optimal block count $M$ using the identity 
+\begin{equation}
+      M = \sqrt{(k-s)\frac{\beta m}{s}\alpha}
+\end{equation}
+\begin{equation}
+      = \sqrt{(2log(p)-2)\frac{\beta m}{2}\alpha}
+\end{equation}
+
+\printbibliography
+
+%----------------------------------------------------------------------------------------
+
+\end{document}
