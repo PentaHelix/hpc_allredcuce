@@ -87,10 +87,7 @@ In the interest of legibility I will use a simple shorthand notation when descri
       \caption{Binary shorthand}
 \end{table}
 
-\section{Exercise 1}
-The objective of this exercise was to implement an MPI conforming \textit{Allreduce} \cite{mpi_allreduce} operation by decomposing it into a reduction and a broadcast stage. Both stages are based on a binary-tree approach, which will be described in the following subsections.
-
-\subsection{Binary tree}\label{sec:binary_tree}
+\section*{Binary tree representation}\label{sec:binary_tree}
 In order to effectively construct and pipeline the required collective operations, it is helpful to organize involved processes into a complete binary tree structure. 
 
 \begin{figure}
@@ -165,6 +162,10 @@ A node at layer l has left and right subtrees, each with $2^l$ children in it. A
 \end{table}
 
 Using these operations each process can quickly determine its parent and child processes with which it will communicate.
+
+
+\section{Exercise 1}
+The objective of this exercise was to implement an MPI conforming \textit{Allreduce} \cite{mpi_allreduce} operation by decomposing it into a reduction and a broadcast stage. Both stages are based on a binary-tree approach, which will be described in the following subsections.
 
 \subsection{Reduction}
 In a reduction, each of the $p$ involved processors $p_i$ possesses one vector of data $d_i$. The reduction applies an operation to all of these vectors element-wise, reducing them to a single result. The vectors $d_i$ may be broken up into individual blocks, meaning processors may have to send multiple times to export all of their data. After completion, a single processor ends up with the final reduction result. Depending on the operations commutativity, the reduction must be performed in a way which keeps order of the operands.\\
@@ -346,6 +347,8 @@ Using the pipeline lemma one can also determine the optimal block count $M$ usin
 \begin{equation}
       = \sqrt{(2log(p)-2)\frac{\beta m}{2}\alpha}
 \end{equation}
+
+\section{Exercise 2}
 
 \printbibliography
 

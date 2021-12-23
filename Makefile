@@ -1,5 +1,5 @@
 run2: task2
-	mpirun -np 12 task2
+	mpirun -np 7 task2
 
 run1: task1
 	mpirun -np 10 task1
