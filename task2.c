@@ -6,6 +6,7 @@
 #include <math.h>
 
 #define min(X, Y) (((X) < (Y)) ? (X) : (Y))
+#define max(X, Y) (((X) > (Y)) ? (X) : (Y))
 
 int blocksize = 1;
 
@@ -13,59 +14,66 @@ int get_layer(int val) {
   return __builtin_ctz(~val);
 }
 
-int parent (int node) {
+int get_parent (int node) {
   int D = get_layer(node);
   int p = node >> (D+2) << (D+2);
   return p | (1 << (D+1)) - 1;
 } 
 
-// constructing the tree 
-void nodeinfo(int node, int comm_size, int *treeheight, int *treesize, int* ancestor, int* left, int* right, int* layer, int* dual) {
+int do_skips (int rank, int overshoot) {
+  int skips = 0;
+  while (rank + skips >= overshoot + skips*2) skips++;
+  return rank + skips;
+}
+
+int undo_skips (int node, int overshoot) {
+  int skipped = max(0, (node - overshoot + 1)/2);
+  return node - skipped;
+}
+
+void nodeinfo(int rank, int comm_size, int* node, int* parent, int* left, int* right, int* layer, int* treeheight, int* dual) {
+  // treeheight for half the nodes
   *treeheight = floor(log2(ceil(comm_size/2.0)));
-  *treesize = pow(2,*treeheight+1) - 1;
+  int treesize = pow(2,*treeheight+1) - 1;
+  // no. of processes - size of n-1 tree
+  int overshoot_l = (ceil(comm_size/2.0) - (pow(2,*treeheight) - 1)) * 2;
+  int overshoot_r = (floor(comm_size/2.0) - (pow(2,*treeheight) - 1)) * 2;
 
-  int offset = node >= *treesize ? *treesize : 0;
-  node -= offset;
-  *layer = get_layer(node);
-  *ancestor = *layer == *treeheight ? -1 : parent(node);
+  int offset = rank >= comm_size/2.0 ? ceil(comm_size/2.0) : 0;
+  int overshoot = offset == 0 ? overshoot_l : overshoot_r;
 
-  *left =  *layer == 0 ? -1 : node - (1 << *layer-1);
-  *right = *layer == 0 ? -1 : node + (1 << *layer-1);
+  // skip any virtual nodes
+  *node = do_skips(rank - offset, overshoot);
+  *layer = get_layer(*node);
 
-  if (*ancestor != -1) *ancestor += offset;
-  if (*left != -1) *left += offset;
-  if (*right != -1) *right += offset;
+  *parent = get_parent(*node);
+  *left =  *layer == 0 ? -1 : *node - (1 << *layer-1);
+  *right = *layer == 0 ? -1 : *node + (1 << *layer-1);
 
-  while (*ancestor >= comm_size && get_layer(*ancestor-offset) < *treeheight) *ancestor = parent(*ancestor-offset)+offset;
-  if (*ancestor >= comm_size) *ancestor = -1;
+  if (get_layer(*parent) > *treeheight) *parent = -1;
+  if (*left % 2 == 0 && *left >= overshoot) *left = -1;
+  if (*right % 2 == 0 && *right >= overshoot) *right = -1;
 
-  int d = *layer-2;
-  while (*right >= comm_size) {
-    if (d == -1) {
-      *right = -1;
-      break;
-    }
-    *right = (*right-offset) - (1 << d) + offset;
-    d--;
+  if (*parent != -1) *parent = undo_skips(*parent, overshoot);
+  if (*left != -1) *left = undo_skips(*left, overshoot);
+  if (*right != -1) *right = undo_skips(*right, overshoot);
+
+  if (offset != 0) {
+    *node += treesize;
+    if (*parent != -1) *parent += ceil(comm_size/2.0);
+    if (*left != -1)   *left   += ceil(comm_size/2.0);
+    if (*right != -1)  *right  += ceil(comm_size/2.0);
   }
 
-  if (*ancestor == -1) {
-    // root node on right side
-    if (offset != 0) *dual = *treesize/2;
-    // root node on left side
-    else {
-      *dual = node + *treesize;
-      d = *layer-1;
-      while (*dual >= comm_size) {
-        if (d == -1) {
-          *dual = -1;
-          break;
-        }
-        *dual = (*dual-offset) - (1 << d) + offset;
-        d--;
-      }
-    }
+  if (*left >= comm_size) *left = -1;
+  if (*right >= comm_size) *right = -1;
+
+  if (*parent == -1) {
+    int root = (1 << *treeheight) - 1;
+    *dual = undo_skips(root, offset == 0 ? overshoot_r : overshoot_l) + (rank >= comm_size/2.0 ? 0 : ceil(comm_size/2.0));
   }
+  
+  // printf("rank %d, node %d, overshoot %d, parent %d, left %d, right %d, layer %d, dual %d\n", rank, *node, overshoot, *parent, *left, *right, *layer, *dual);
 }
 
 // allreduce implementation
@@ -81,10 +89,9 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
   int comm_size;
   MPI_Comm_size(comm, &comm_size);
 
-  int node, ancestor, left, right, layer, dual, treesize, treeheight;
-  MPI_Comm_rank(comm, &node);
-  nodeinfo(node, comm_size, &treeheight, &treesize, &ancestor, &left, &right, &layer, &dual);
-  int ancestorget_layer = get_layer(ancestor%treesize);
+  int rank, node, parent, left, right, layer, dual, treesize, treeheight;
+  MPI_Comm_rank(comm, &rank);
+  nodeinfo(rank, comm_size, &node, &parent, &left, &right, &layer, &treeheight, &dual);
 
   int typesize;
   MPI_Type_size(datatype, &typesize);
@@ -98,11 +105,11 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
 
   while (++round < rounds) {
     // is node on the right side of parent to send up/recv down (even round => left child, odd round => right child)
-    bool matchesEvenOdd = ancestor < node && round % 2 == 1 || ancestor > node && round % 2 == 0;
-    int descendent = round % 2 == 0 ? left : right;
+    bool matchesEvenOdd = parent < rank && round % 2 == 1 || parent > rank && round % 2 == 0;
+    int child = round % 2 == 0 ? left : right;
 
     // --- SENDING UP---
-    bool isAncestorReceivingUpYet = ancestor != -1 && round/2 >= ancestorget_layer - 1;
+    bool isAncestorReceivingUpYet = parent != -1 && round/2 >= layer - 2;
     bool hasUnsentUp = sentup != blockcount && (recvdup >= 2 || layer == 0);
 
     bool shouldSendUp = matchesEvenOdd && hasUnsentUp && isAncestorReceivingUpYet;
@@ -111,7 +118,7 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     // --- RECEIVING UP---
     bool isReceivingUpYet = round/2 >= layer - 1;
     bool hasUnreceivedUp = recvdup/2 != blockcount;
-    bool hasDescendent = descendent != -1;
+    bool hasDescendent = child != -1;
 
     bool shouldReceiveUp = isReceivingUpYet && hasUnreceivedUp && hasDescendent;
 
@@ -122,7 +129,7 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
 
     // --- RECEIVING DOWN---
     bool hasUnreceivedDown = recvddown != blockcount;
-    bool isAncestorSendingDownYet = ancestor != -1 && round/2 >= (2*treeheight-ancestorget_layer);
+    bool isAncestorSendingDownYet = parent != -1 && round/2 >= (2*treeheight-layer-1);
 
     bool shouldReceiveDown = matchesEvenOdd && hasUnreceivedDown && isAncestorSendingDownYet;
 
@@ -145,61 +152,61 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     int ops = shouldSendUp << 3 | shouldReceiveUp << 2 | shouldSendDown << 1 | shouldReceiveDown;
 
     if ((ops & 0b1100) == 0b1100) {
-      // printf("[%d] send up (%d) %d -> %d\n", round, sentup, node, ancestor);
-      // printf("[%d] recv up (%d) %d -> %d\n", round, recvdup/2, descendent, node);
-      MPI_Sendrecv(send_up_from, send_up_size, datatype, ancestor, 0,
-                  recv_up_into,  recv_up_size, datatype, descendent, 0,
+      // printf("[%d] send up (%d) %d -> %d\n", round, sentup, rank, parent);
+      // printf("[%d] recv up (%d) %d -> %d\n", round, recvdup/2, child, rank);
+      MPI_Sendrecv(send_up_from, send_up_size, datatype, parent, 0,
+                  recv_up_into,  recv_up_size, datatype, child, 0,
                   comm, MPI_STATUS_IGNORE);
       ops &= 0b0011;
     }
 
     if ((ops & 0b0011) == 0b0011) {
-      // printf("[%d] send dn (%d) %d -> %d\n", round, sentdown/2, node, descendent);
-      // printf("[%d] recv dn (%d) %d -> %d\n", round, recvddown, ancestor, node);
-      MPI_Sendrecv(send_down_from, send_down_size, datatype, descendent, 0,
-                  recv_down_into,  recv_down_size, datatype, ancestor, 0,
+      // printf("[%d] send dn (%d) %d -> %d\n", round, sentdown/2, rank, child);
+      // printf("[%d] recv dn (%d) %d -> %d\n", round, recvddown, parent, rank);
+      MPI_Sendrecv(send_down_from, send_down_size, datatype, child, 0,
+                  recv_down_into,  recv_down_size, datatype, parent, 0,
                   comm, MPI_STATUS_IGNORE);
 
       ops &= 0b1100;
     }
 
     if ((ops & 0b1001) == 0b1001) {
-      // printf("[%d] send up (%d) %d -> %d\n", round, sentup, node, ancestor);
-      // printf("[%d] recv dn (%d) %d -> %d\n", round, recvddown, ancestor, node);
-      MPI_Sendrecv(send_up_from, send_up_size, datatype, ancestor, 0,
-                  recv_down_into,  recv_down_size, datatype, ancestor, 0,
+      // printf("[%d] send up (%d) %d -> %d\n", round, sentup, rank, parent);
+      // printf("[%d] recv dn (%d) %d -> %d\n", round, recvddown, parent, rank);
+      MPI_Sendrecv(send_up_from, send_up_size, datatype, parent, 0,
+                  recv_down_into,  recv_down_size, datatype, parent, 0,
                   comm, MPI_STATUS_IGNORE);
 
       ops &= 0b0110;
     }
 
     if ((ops & 0b0110) == 0b0110) {
-      // printf("[%d] send dn (%d) %d -> %d\n", round, sentdown/2, node, descendent);
-      // printf("[%d] recv up (%d) %d -> %d\n", round, recvdup/2, descendent, node);
-      MPI_Sendrecv(send_down_from, send_down_size, datatype, descendent, 0,
-                  recv_up_into,  recv_up_size, datatype, descendent, 0,
+      // printf("[%d] send dn (%d) %d -> %d\n", round, sentdown/2, rank, child);
+      // printf("[%d] recv up (%d) %d -> %d\n", round, recvdup/2, child, rank);
+      MPI_Sendrecv(send_down_from, send_down_size, datatype, child, 0,
+                  recv_up_into,  recv_up_size, datatype, child, 0,
                   comm, MPI_STATUS_IGNORE);
       ops &= 0b1001;
     }
 
     if ((ops & 0b1000) == 0b1000) {
-      // printf("[%d] send up (%d) %d -> %d\n", round, sentup, node, ancestor);
-      MPI_Send(send_up_from, send_up_size, datatype, ancestor, 0, comm);
+      // printf("[%d] send up (%d) %d -> %d\n", round, sentup, rank, parent);
+      MPI_Send(send_up_from, send_up_size, datatype, parent, 0, comm);
     }
 
     if ((ops & 0b0100) == 0b0100) {
-      // printf("[%d] recv up (%d) %d -> %d\n", round, recvdup/2, descendent, node);
-      MPI_Recv(recv_up_into, recv_up_size, datatype, descendent, 0, comm, MPI_STATUS_IGNORE);
+      // printf("[%d] recv up (%d) %d -> %d\n", round, recvdup/2, child, rank);
+      MPI_Recv(recv_up_into, recv_up_size, datatype, child, 0, comm, MPI_STATUS_IGNORE);
     }
 
     if ((ops & 0b0010) == 0b0010) {
-      // printf("[%d] send dn (%d) %d -> %d\n", round, sentdown/2, node, descendent);
-      MPI_Send(send_down_from, send_down_size, datatype, descendent, 0, comm);
+      // printf("[%d] send dn (%d) %d -> %d\n", round, sentdown/2, rank, child);
+      MPI_Send(send_down_from, send_down_size, datatype, child, 0, comm);
     }
 
     if ((ops & 0b0001) == 0b0001) {
-      // printf("[%d] recv dn (%d) %d -> %d\n", round, recvddown, ancestor, node);
-      MPI_Recv(recv_down_into, recv_down_size, datatype, ancestor, 0, comm, MPI_STATUS_IGNORE);
+      // printf("[%d] recv dn (%d) %d -> %d\n", round, recvddown, parent, rank);
+      MPI_Recv(recv_down_into, recv_down_size, datatype, parent, 0, comm, MPI_STATUS_IGNORE);
     }
 
     // --- LOCAL REDUCTION --- 
@@ -221,7 +228,7 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     if (hasUnsentDown) sentdown++;
 
     // --- DUAL ROOT SWAP ---
-    bool isRoot = ancestor == -1;
+    bool isRoot = parent == -1;
     bool hasNewReduct = round % 2 == 1 && recvdup != 0 && swapped != blockcount;
     bool hasSwappingStarted = (round+1)/2 >= treeheight;
     bool hasDual = dual != -1;
@@ -286,7 +293,7 @@ void run_test() {
           MPI_Allreduce(out1, in1, size, MPI_DOUBLE, MPI_PROD, comm);
 
           for (int i = 0; i < size; i++) {
-            if (in0[i] != in1[i]) {
+            if (in0[i] != in1[i]+1) {
               printf("%d,%d: %lf != %lf\n", processes, i, in0[i], in1[i]);
             }
           }
@@ -306,12 +313,12 @@ int main(int argc, char **argv) {
   // int world_rank;
   // MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
-  // double out[] = {[0 ... 10000] = 2.124};
-  // double in[10000] = {0.0};
+  // double out[] = {1.0, 2.0};
+  // double in[] = {0.0, 0.0};
 
-  // AllReduce(out, in, 10000, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  // // MPI_Allreduce(out, in, 10000, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  // printf("result: (%lf, %lf, %lf, %lf, %lf)\n", in[0], in[240], in[3333], in[7489], in[9999]);
+  // AllReduce(out, in, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  // MPI_Allreduce(out, in, 10000, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  // printf("result: (%lf, %lf)\n", in[0], in[1]);
 
   run_test();
   // Finalize: Any resources allocated for MPI can be freed

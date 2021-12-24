@@ -1,9 +1,8 @@
 run1: task1
-	mpirun -np 10 task1
+	mpirun -np 4 task1
 
 run2: task2
-	mpirun -np 7 task2
-
+	mpirun -np 4 task2
 
 task1: task1.c
 	mpicc task1.c -lm -o task1

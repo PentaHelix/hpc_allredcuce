@@ -264,17 +264,16 @@ int main(int argc, char **argv) {
   MPI_Init(&argc, &argv);
 
   // Get the rank of the calling process
-  // int world_rank;
-  // MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  int world_rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
 
-  // double out[] = {1.0, 1.0, 1.0, 1.0, 1.0};
-  // double in[] = {0.0, 0.0, 0.0, 0.0, 0.0};
+  double out[] = {1.0, 1.0, 1.0, 1.0, 1.0};
+  double in[] = {0.0, 0.0, 0.0, 0.0, 0.0};
 
-  // AllReduce(out, in, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  // MPI_Allreduce(out, in, 10000, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  // printf("result: (%lf, %lf, %lf, %lf, %lf)\n", in[0], in[1], in[2], in[3], in[4]);
+  AllReduce(out, in, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+  printf("result: (%lf, %lf)\n", in[0], in[1]);
 
-  run_test();
+  // run_test();
   // Finalize: Any resources allocated for MPI can be freed
   MPI_Finalize();
 }
