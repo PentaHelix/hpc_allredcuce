@@ -22,7 +22,7 @@ void run_validation() {
   const int blocksizes[] = {8, 32, 68, 100, 250, 500, 750, 1000, 2500};
 
   // vector size
-  for (int size_i = 0; size_i < 22; size_i++) {
+  for (int size_i = 0; size_i < 21; size_i++) {
     int size = elements[size_i];
     for (int blocksize_i = 0; blocksize_i < 9; blocksize_i++) {
       blocksize = blocksizes[blocksize_i];
