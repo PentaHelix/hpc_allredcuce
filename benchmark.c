@@ -9,14 +9,20 @@
 int blocksize;
 void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm);
 
-void run_validation() {
+void run_benchmark(char* filename) {
+  int rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+  FILE *fptr;
+  if (rank == 0) {
+    fptr = fopen(filename, "w");
+    fprintf(fptr, "size;blocksize;custom;mpi\n");
+  }
+
   static double out0[150000] = {0.0};
   static double in0[150000] = {0.0};
   static double out1[150000] = {0.0};
   static double in1[150000] = {0.0};
-
-  int rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500, 2125, 2500, 8750, 15000, 21250, 25000, 87500, 150000};
   const int blocksizes[] = {8, 32, 68, 100, 250, 500, 750, 1000, 2500};
@@ -51,7 +57,7 @@ void run_validation() {
         times[0] += measured[0];
         times[1] += measured[1];
       }
-      if (rank == 0) printf("[%d, %d, %lf, %lf],\n", size, blocksize, times[0]/16.0*1000, times[1]/16.0*1000);
+      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf,\n", size, blocksize, times[0]/16.0*1000, times[1]/16.0*1000);
       fflush(stdout);
     }
   }
@@ -62,6 +68,6 @@ void run_validation() {
 
 int main(int argc, char **argv) {
   MPI_Init(&argc, &argv);
-  run_validation();
+  run_benchmark(argv[1]);
   MPI_Finalize();
 }
