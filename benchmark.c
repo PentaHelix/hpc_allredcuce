@@ -10,10 +10,10 @@ int blocksize;
 void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm);
 
 void run_validation() {
-  double out0[8388608] = {0.0};
-  double in0[8388608] = {0.0};
-  double out1[8388608] = {0.0};
-  double in1[8388608] = {0.0};
+  static double out0[8388608] = {0.0};
+  static double in0[8388608] = {0.0};
+  static double out1[8388608] = {0.0};
+  static double in1[8388608] = {0.0};
 
   int rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
