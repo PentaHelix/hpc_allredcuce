@@ -19,7 +19,6 @@ void run_validation() {
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500, 2125, 2500, 8750, 15000, 21250, 25000, 87500, 150000, 212500, 250000, 875000, 1500000, 2125000, 2500000, 4597152, 6694304, 8388608};
-  // const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500};
   const int blocksizes[] = {1, 31, 68, 100, 200, 500, 700, 1000, 2500};
 
   // vector size
@@ -53,7 +52,7 @@ void run_validation() {
         times[0] += measured[0];
         times[1] += measured[1];
       }
-      if (rank == 0) printf("[%d, %d, %lf, %lf],\n", size, blocksize, times[0]/16*1000, times[1]/16*1000);
+      if (rank == 0) printf("[%d, %d, %lf, %lf],\n", size, blocksize, times[0]/16.0*1000, times[1]/16.0*1000);
     }
   }
 

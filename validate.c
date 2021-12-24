@@ -18,15 +18,16 @@ void run_validation() {
   int rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  const int elements[] = {1, 10, 25, 36, 99, 103, 455, 1023, 42311, 74589};
+  const int elements[] = {2500, 10, 25, 36, 99, 103, 455, 1023, 42311, 74589};
 
   // vector size
   for (int size_i = 0; size_i < 10; size_i++) {
     int size = elements[size_i];
-    for (blocksize = 1; blocksize < 100000; blocksize *= 10) {
+    // for (blocksize = 1; blocksize == 1000; blocksize *= 10) {
+    for (blocksize = 200; blocksize == 200; blocksize *= 10) {
       for (int processes = 2; processes < 10; processes += 1) {
-        MPI_Comm comm;
-        MPI_Comm_split(MPI_COMM_WORLD, rank < processes ? 0 : MPI_UNDEFINED, 0, &comm);
+        MPI_Comm comm = MPI_COMM_WORLD;
+        // MPI_Comm_split(MPI_COMM_WORLD, rank < processes ? 0 : MPI_UNDEFINED, 0, &comm);
 
         if (comm != MPI_COMM_NULL) {
           for (int v = 1; v <= size; v++) {
