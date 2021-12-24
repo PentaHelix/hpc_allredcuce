@@ -10,20 +10,19 @@ int blocksize;
 void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm);
 
 void run_validation() {
-  static double out0[8388608] = {0.0};
-  static double in0[8388608] = {0.0};
-  static double out1[8388608] = {0.0};
-  static double in1[8388608] = {0.0};
+  static double out0[150000] = {0.0};
+  static double in0[150000] = {0.0};
+  static double out1[150000] = {0.0};
+  static double in1[150000] = {0.0};
 
   int rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500, 2125, 2500, 8750, 15000, 21250, 25000, 87500, 150000, 212500, 250000, 875000, 1500000, 2125000, 2500000, 4597152, 6694304, 8388608};
-  const int blocksizes[] = {1, 31, 68, 100, 200, 500, 700, 1000, 2500};
+  const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500, 2125, 2500, 8750, 15000, 21250, 25000, 87500, 150000};
+  const int blocksizes[] = {8, 32, 68, 100, 250, 500, 750, 1000, 2500};
 
   // vector size
-  for (int size_i = 0; size_i < 30; size_i++) {
-  // for (int size_i = 0; size_i < 12; size_i++) {
+  for (int size_i = 0; size_i < 2; size_i++) {
     int size = elements[size_i];
     for (int blocksize_i = 0; blocksize_i < 9; blocksize_i++) {
       blocksize = blocksizes[blocksize_i];
