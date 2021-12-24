@@ -1,17 +1,17 @@
 benchmark-hydra: build_benchmark
-	mpirun -n 20 -npernode 1 ./bin/benchmark1
-	mpirun -n 20 -npernode 16 ./bin/benchmark1
-	mpirun -n 20 -npernode 32 ./bin/benchmark1
-	mpirun -n 32 -npernode 1 ./bin/benchmark1
-	mpirun -n 32 -npernode 16 ./bin/benchmark1
-	mpirun -n 32 -npernode 32 ./bin/benchmark1
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=1 ./bin/benchmark1
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=16 ./bin/benchmark1
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=32 ./bin/benchmark1
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=1 ./bin/benchmark1
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=16 ./bin/benchmark1
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=32 ./bin/benchmark1
 
-	mpirun -n 20 -npernode 1 ./bin/benchmark2
-	mpirun -n 20 -npernode 16 ./bin/benchmark2
-	mpirun -n 20 -npernode 32 ./bin/benchmark2
-	mpirun -n 32 -npernode 1 ./bin/benchmark2
-	mpirun -n 32 -npernode 16 ./bin/benchmark2
-	mpirun -n 32 -npernode 32 ./bin/benchmark2
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=1 ./bin/benchmark2
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=16 ./bin/benchmark2
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=32 ./bin/benchmark2
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=1 ./bin/benchmark2
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=16 ./bin/benchmark2
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=32 ./bin/benchmark2
 
 benchmark: build_benchmark
 	mpirun ./bin/benchmark1
