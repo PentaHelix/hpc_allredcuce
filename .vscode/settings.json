@@ -7,6 +7,7 @@
     "type_traits": "c",
     "xstring": "c",
     "xtree": "c",
-    "xutility": "c"
+    "xutility": "c",
+    "xlocale": "c"
   }
 }

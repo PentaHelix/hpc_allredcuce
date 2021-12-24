@@ -89,14 +89,20 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
   int comm_size;
   MPI_Comm_size(comm, &comm_size);
 
-  int rank, node, parent, left, right, layer, dual, treesize, treeheight;
-  MPI_Comm_rank(comm, &rank);
-  nodeinfo(rank, comm_size, &node, &parent, &left, &right, &layer, &treeheight, &dual);
-
   int typesize;
   MPI_Type_size(datatype, &typesize);
   void* value = malloc(typesize*count);
   memcpy(value, sendbuf, typesize*count);
+
+  // trivial case
+  if (comm_size == 1) {
+    memcpy(recvbuf, sendbuf, typesize*count);
+    return;
+  }
+
+  int rank, node, parent, left, right, layer, dual, treesize, treeheight;
+  MPI_Comm_rank(comm, &rank);
+  nodeinfo(rank, comm_size, &node, &parent, &left, &right, &layer, &treeheight, &dual);
 
   void* bufup = malloc(typesize*count);
 
@@ -252,75 +258,4 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
       swapped++;
     }
   }
-}
-
-void run_test() {
-  double out0[100000] = {0.0};
-  double in0[100000] = {0.0};
-  double out1[100000] = {0.0};
-  double in1[100000] = {0.0};
-
-  int rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-
-  const int sizes[] = {1, 10, 25, 36, 99, 103, 455, 1023, 42311, 74589};
-
-  // vector size
-  for (int size_i = 0; size_i < 10; size_i++) {
-    // blocksize (global var)
-    int size = sizes[size_i];
-    for (blocksize = 1; blocksize < 100000; blocksize *= 10) {
-      for (int processes = 2; processes < 10; processes += 1) {
-        MPI_Comm comm;
-        MPI_Comm_split(MPI_COMM_WORLD, rank < processes ? 0 : MPI_UNDEFINED, 0, &comm);
-        if (comm != MPI_COMM_NULL) {
-
-          for (int v = 1; v <= size; v++) {
-            out0[v-1] = ((v + rank) % 10) + 1;
-            out1[v-1] = ((v + rank) % 10) + 1;
-          }
-
-          AllReduce(out0, in0, size, MPI_DOUBLE, MPI_SUM, comm);
-          MPI_Allreduce(out1, in1, size, MPI_DOUBLE, MPI_SUM, comm);
-
-          for (int i = 0; i < size; i++) {
-            if (in0[i] != in1[i]) {
-              printf("%d,%d: %lf != %lf\n", processes, i, in0[i], in1[i]);
-            }
-          }
-
-          AllReduce(out0, in0, size, MPI_DOUBLE, MPI_PROD, comm);
-          MPI_Allreduce(out1, in1, size, MPI_DOUBLE, MPI_PROD, comm);
-
-          for (int i = 0; i < size; i++) {
-            if (in0[i] != in1[i]+1) {
-              printf("%d,%d: %lf != %lf\n", processes, i, in0[i], in1[i]);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  if (rank == 0) printf("Tests completed\n");
-}
-
-int main(int argc, char **argv) {
-  // Initialize the MPI environment
-  MPI_Init(&argc, &argv);
-
-  // Get the rank of the calling process
-  // int world_rank;
-  // MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-
-  // double out[] = {1.0, 2.0};
-  // double in[] = {0.0, 0.0};
-
-  // AllReduce(out, in, 2, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  // MPI_Allreduce(out, in, 10000, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-  // printf("result: (%lf, %lf)\n", in[0], in[1]);
-
-  run_test();
-  // Finalize: Any resources allocated for MPI can be freed
-  MPI_Finalize();
 }
