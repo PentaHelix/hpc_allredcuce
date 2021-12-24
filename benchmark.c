@@ -22,7 +22,7 @@ void run_validation() {
   const int blocksizes[] = {8, 32, 68, 100, 250, 500, 750, 1000, 2500};
 
   // vector size
-  for (int size_i = 0; size_i < 2; size_i++) {
+  for (int size_i = 0; size_i < 22; size_i++) {
     int size = elements[size_i];
     for (int blocksize_i = 0; blocksize_i < 9; blocksize_i++) {
       blocksize = blocksizes[blocksize_i];
@@ -52,6 +52,7 @@ void run_validation() {
         times[1] += measured[1];
       }
       if (rank == 0) printf("[%d, %d, %lf, %lf],\n", size, blocksize, times[0]/16.0*1000, times[1]/16.0*1000);
+      fflush(stdout);
     }
   }
 
