@@ -130,12 +130,13 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
 
     // --- SENDING DOWN ---
     bool hasUnsentDown = sentdown/2 != blockcount && recvddown + swapped >= 1;
+    bool hasSenddownStarted = round/2 - treeheight >= treeheight - layer;
 
-    bool shouldSendDown = hasDescendent && hasUnsentDown;
+    bool shouldSendDown = hasDescendent && hasUnsentDown && hasSenddownStarted;
 
     // --- RECEIVING DOWN---
     bool hasUnreceivedDown = recvddown != blockcount;
-    bool isAncestorSendingDownYet = parent != -1 && round/2 >= (2*treeheight-layer);
+    bool isAncestorSendingDownYet = parent != -1 && round/2 >= (2*treeheight-layer-1);
 
     bool shouldReceiveDown = matchesEvenOdd && hasUnreceivedDown && isAncestorSendingDownYet;
 
@@ -231,7 +232,7 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     if (isReceivingUpYet && hasUnreceivedUp) recvdup++;
     if (shouldSendUp) sentup++;
     if (shouldReceiveDown) recvddown++;
-    if (hasUnsentDown) sentdown++;
+    if (hasUnsentDown && hasSenddownStarted) sentdown++;
 
     // --- DUAL ROOT SWAP ---
     bool isRoot = parent == -1;
