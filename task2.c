@@ -135,7 +135,7 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
 
     // --- RECEIVING DOWN---
     bool hasUnreceivedDown = recvddown != blockcount;
-    bool isAncestorSendingDownYet = parent != -1 && round/2 >= (2*treeheight-layer-1);
+    bool isAncestorSendingDownYet = parent != -1 && round/2 >= (2*treeheight-layer);
 
     bool shouldReceiveDown = matchesEvenOdd && hasUnreceivedDown && isAncestorSendingDownYet;
 
