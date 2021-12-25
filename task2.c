@@ -158,25 +158,6 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
     // there has to be a better way of pairing up send/recv...
     int ops = shouldSendUp << 3 | shouldReceiveUp << 2 | shouldSendDown << 1 | shouldReceiveDown;
 
-    if ((ops & 0b1100) == 0b1100) {
-      // printf("[%d] send up (%d) %d -> %d\n", round, sentup, rank, parent);
-      // printf("[%d] recv up (%d) %d -> %d\n", round, recvdup/2, child, rank);
-      MPI_Sendrecv(send_up_from, send_up_size, datatype, parent, 0,
-                  recv_up_into,  recv_up_size, datatype, child, 0,
-                  comm, MPI_STATUS_IGNORE);
-      ops &= 0b0011;
-    }
-
-    if ((ops & 0b0011) == 0b0011) {
-      // printf("[%d] send dn (%d) %d -> %d\n", round, sentdown/2, rank, child);
-      // printf("[%d] recv dn (%d) %d -> %d\n", round, recvddown, parent, rank);
-      MPI_Sendrecv(send_down_from, send_down_size, datatype, child, 0,
-                  recv_down_into,  recv_down_size, datatype, parent, 0,
-                  comm, MPI_STATUS_IGNORE);
-
-      ops &= 0b1100;
-    }
-
     if ((ops & 0b1001) == 0b1001) {
       // printf("[%d] send up (%d) %d -> %d\n", round, sentup, rank, parent);
       // printf("[%d] recv dn (%d) %d -> %d\n", round, recvddown, parent, rank);
