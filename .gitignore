@@ -1,4 +1,6 @@
 build/
 openmpi/
 bin/
+mpip/
 *.log
+*.mpiP

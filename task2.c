@@ -72,7 +72,7 @@ void nodeinfo(int rank, int comm_size, int* node, int* parent, int* left, int* r
     int root = (1 << *treeheight) - 1;
     *dual = undo_skips(root, offset == 0 ? overshoot_r : overshoot_l) + (rank >= comm_size/2.0 ? 0 : ceil(comm_size/2.0));
   }
-  
+
   // printf("rank %d, node %d, overshoot %d, parent %d, left %d, right %d, layer %d, dual %d\n", rank, *node, overshoot, *parent, *left, *right, *layer, *dual);
 }
 
@@ -252,9 +252,6 @@ void AllReduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datat
         memcpy(swap_into, swap_from, swap_size*typesize);
       }
 
-      swapped++;
-    } else if (isRoot && hasNewReduct && hasSwappingStarted) {
-      memcpy(swap_into, swap_from, swap_size*typesize);
       swapped++;
     }
   }
