@@ -30,7 +30,7 @@ void run_benchmark(char* filename) {
   // vector size
   for (int size_i = 0; size_i < 21; size_i++) {
     int size = elements[size_i];
-    for (int blocksize_i = 0; blocksize_i < 9; blocksize_i++) {
+    for (int blocksize_i = 0; blocksize_i < 5; blocksize_i++) {
       blocksize = blocksizes[blocksize_i];
 
       for (int v = 1; v <= size; v++) {
