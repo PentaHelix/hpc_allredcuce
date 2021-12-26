@@ -25,7 +25,7 @@ void run_benchmark(char* filename) {
   static double in1[150000] = {0.0};
 
   const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500, 2125, 2500, 8750, 15000, 21250, 25000, 87500, 150000};
-  const int blocksizes[] = {8, 32, 68, 100, 250, 500, 750, 1000, 2500};
+  const int blocksizes[] = {8, 250, 500, 750, 2500};
 
   // vector size
   for (int size_i = 0; size_i < 21; size_i++) {
@@ -57,7 +57,7 @@ void run_benchmark(char* filename) {
         times[0] += measured[0];
         times[1] += measured[1];
       }
-      
+
       MPI_Barrier(MPI_COMM_WORLD);
       if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf\n", size, blocksize, times[0]/32.0*1000, times[1]/32.0*1000);
     }
