@@ -13,6 +13,21 @@ benchmark-hydra: build-benchmark
 	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=16 ./bin/benchmark2 2_32x16.log
 	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=32 ./bin/benchmark2 2_32x32.log
 
+validate-hydra: build-validate
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=1 ./bin/validate1
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=16 ./bin/validate1
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=32 ./bin/validate1
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=1 ./bin/validate1
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=16 ./bin/validate1
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=32 ./bin/validate1
+
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=1 ./bin/validate2
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=16 ./bin/validate2
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=32 ./bin/validate2
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=1 ./bin/validate2
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=16 ./bin/validate2
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=32 ./bin/validate2
+
 profile: build-profile
 	./mpip/bin/mpirun-mpip ./bin/profile1
 	./mpip/bin/mpirun-mpip ./bin/profile2

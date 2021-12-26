@@ -57,7 +57,7 @@ void run_benchmark(char* filename) {
         times[0] += measured[0];
         times[1] += measured[1];
       }
-      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf,\n", size, blocksize, times[0]/16.0*1000, times[1]/16.0*1000);
+      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf\n", size, blocksize, times[0]/16.0*1000, times[1]/16.0*1000);
       fflush(stdout);
     }
   }
