@@ -32,7 +32,7 @@ void run_benchmark(char* filename) {
     int size = elements[size_i];
     for (int blocksize_i = 0; blocksize_i < 9; blocksize_i++) {
       blocksize = blocksizes[blocksize_i];
-      
+
       for (int v = 1; v <= size; v++) {
         out0[v-1] = ((v + rank) % 10) + 1;
         out1[v-1] = ((v + rank) % 10) + 1;
@@ -57,7 +57,9 @@ void run_benchmark(char* filename) {
         times[0] += measured[0];
         times[1] += measured[1];
       }
-      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf\n", size, blocksize, times[0]/16.0*1000, times[1]/16.0*1000);
+      
+      MPI_Barrier(MPI_COMM_WORLD);
+      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf\n", size, blocksize, times[0]/32.0*1000, times[1]/32.0*1000);
     }
   }
 
