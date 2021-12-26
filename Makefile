@@ -49,22 +49,22 @@ build-validate: task1.o task2.o
 	mpicc validate.c bin/task2.o -lm -o bin/validate2
 
 build-benchmark: task1.o task2.o
-	mpicc benchmark.c bin/task1.o -lm -o bin/benchmark1
-	mpicc benchmark.c bin/task2.o -lm -o bin/benchmark2
+	mpicc benchmark.c bin/task1.o -lm -o bin/benchmark1 -O3
+	mpicc benchmark.c bin/task2.o -lm -o bin/benchmark2 -O3
 
 run1: task1.o
-	mpicc run.c bin/task1.o -lm -o bin/run1
+	mpicc run.c bin/task1.o -lm -o bin/run1 -O3
 	mpirun ./bin/run1
 
 run2: task2.o
-	mpicc run.c bin/task2.o -lm -o bin/run2
+	mpicc run.c bin/task2.o -lm -o bin/run2 -O3
 	mpirun ./bin/run2
 
 task1.o: task1.c
-	mpicc -g -c task1.c -o bin/task1.o
+	mpicc -c task1.c -o bin/task1.o -O3
 
 task2.o: task2.c
-	mpicc -g -c task2.c -o bin/task2.o
+	mpicc -c task2.c -o bin/task2.o -O3
 
 clean:
 	rm bin/*
