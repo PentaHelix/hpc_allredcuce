@@ -16,50 +16,57 @@ void run_benchmark(char* filename) {
   FILE *fptr;
   if (rank == 0) {
     fptr = fopen(filename, "w");
-    fprintf(fptr, "size;blocksize;custom;mpi\n");
+    fprintf(fptr, "size;blocksize;custom;allreduce;reduce+bcast\n");
   }
 
-  static double out0[250000] = {0.0};
-  static double in0[250000] = {0.0};
-  static double out1[250000] = {0.0};
-  static double in1[250000] = {0.0};
+  static double input[10000000] = {0.0};
+  static double out0[10000000] = {0.0};
+  static double out1[10000000] = {0.0};
+  static double out2[10000000] = {0.0};
 
-  const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500, 2125, 2500, 8750, 15000, 21250, 25000, 87500, 150000, 250000};
+  const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500, 2125, 2500, 8750, 15000, 21250, 25000, 87500, 150000, 250000, 1000000, 2500000, 10000000};
   const int blocksizes[] = {250, 500, 750, 2500, 16000};
 
   // vector size
-  for (int size_i = 0; size_i < 22; size_i++) {
+  for (int size_i = 0; size_i < 25; size_i++) {
     int size = elements[size_i];
     for (int blocksize_i = 0; blocksize_i < 5; blocksize_i++) {
       blocksize = blocksizes[blocksize_i];
 
       for (int v = 1; v <= size; v++) {
-        out0[v-1] = ((v + rank) % 10) + 1;
-        out1[v-1] = ((v + rank) % 10) + 1;
+        input[v-1] = ((v + rank) % 10) + 1;
+        input[v-1] = ((v + rank) % 10) + 1;
       }
 
-      double times[2] = {0.0, 0.0};
+      double times[3] = {0.0, 0.0, 0.0};
 
-      for (int i = 0; i < 32; i++) {
-        double measured[2];
+      for (int i = 0; i < 8; i++) {
+        double measured[3];
         MPI_Barrier(MPI_COMM_WORLD);
         measured[0] = MPI_Wtime();
-        AllReduce(out0, in0, size, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        AllReduce(input, out0, size, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         measured[0] = MPI_Wtime() - measured[0];
 
         MPI_Barrier(MPI_COMM_WORLD);
         measured[1] = MPI_Wtime();
-        MPI_Allreduce(out1, in1, size, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(input, out1, size, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         measured[1] = MPI_Wtime() - measured[1];
 
-        MPI_Allreduce(MPI_IN_PLACE, measured, 2, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+        MPI_Barrier(MPI_COMM_WORLD);
+        measured[2] = MPI_Wtime();
+        MPI_Reduce(input, out2, size, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+        MPI_Bcast(out2, size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+        measured[2] = MPI_Wtime() - measured[2];
+
+        MPI_Allreduce(MPI_IN_PLACE, measured, 3, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
 
         times[0] += measured[0];
         times[1] += measured[1];
+        times[2] += measured[2];
       }
 
       MPI_Barrier(MPI_COMM_WORLD);
-      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf\n", size, blocksize, times[0]/32.0*1000, times[1]/32.0*1000);
+      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf;%lf\n", size, blocksize, times[0]/8.0*1000, times[1]/8.0*1000, times[2]/8.0*1000);
     }
   }
 
