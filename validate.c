@@ -18,7 +18,7 @@ void run_validation() {
   int rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  const int elements[] = {2500, 10, 25, 36, 99, 103, 455, 1023, 42311, 74589};
+  const int elements[] = {10, 25, 36, 99, 103, 455, 1023, 2500, 42311, 74589};
 
   // vector size
   for (int size_i = 0; size_i < 10; size_i++) {
