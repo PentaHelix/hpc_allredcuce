@@ -1,17 +1,17 @@
 benchmark-hydra: build-benchmark
-	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=1 ./bin/benchmark1 1_20x1.log
-	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=16 ./bin/benchmark1 1_20x16.log
-	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=32 ./bin/benchmark1 1_20x32.log
-	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=1 ./bin/benchmark1 1_32x1.log
-	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=16 ./bin/benchmark1 1_32x16.log
-	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=32 ./bin/benchmark1 1_32x32.log
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=1 ./bin/benchmark1 logs/1_20x1.log
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=16 ./bin/benchmark1 logs/1_20x16.log
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=32 ./bin/benchmark1 logs/1_20x32.log
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=1 ./bin/benchmark1 logs/1_32x1.log
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=16 ./bin/benchmark1 logs/1_32x16.log
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=32 ./bin/benchmark1 logs/1_32x32.log
 
-	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=1 ./bin/benchmark2 2_20x1.log
-	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=16 ./bin/benchmark2 2_20x16.log
-	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=32 ./bin/benchmark2 2_20x32.log
-	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=1 ./bin/benchmark2 2_32x1.log
-	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=16 ./bin/benchmark2 2_32x16.log
-	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=32 ./bin/benchmark2 2_32x32.log
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=1 ./bin/benchmark2 logs/2_20x1.log
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=16 ./bin/benchmark2 logs2_20x16.log
+	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=32 ./bin/benchmark2 logs/2_20x32.log
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=1 ./bin/benchmark2 logs/2_32x1.log
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=16 ./bin/benchmark2 logs/2_32x16.log
+	srun -p q_student --time=1:00 -N 32 --ntasks-per-node=32 ./bin/benchmark2 logs/2_32x32.log
 
 validate-hydra: build-validate
 	srun -p q_student --time=1:00 -N 20 --ntasks-per-node=1 ./bin/validate1
