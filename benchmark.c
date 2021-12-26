@@ -19,16 +19,16 @@ void run_benchmark(char* filename) {
     fprintf(fptr, "size;blocksize;custom;mpi\n");
   }
 
-  static double out0[1500000] = {0.0};
-  static double in0[1500000] = {0.0};
-  static double out1[1500000] = {0.0};
-  static double in1[1500000] = {0.0};
+  static double out0[875000] = {0.0};
+  static double in0[875000] = {0.0};
+  static double out1[875000] = {0.0};
+  static double in1[875000] = {0.0};
 
-  const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500, 2125, 2500, 8750, 15000, 21250, 25000, 87500, 150000, 212500, 250000, 875000, 1500000};
+  const int elements[] = {0, 1, 2, 8, 15, 21, 25, 87, 150, 212, 250, 875, 1500, 2125, 2500, 8750, 15000, 21250, 25000, 87500, 150000, 212500, 250000, 875000};
   const int blocksizes[] = {250, 500, 750, 2500, 16000};
 
   // vector size
-  for (int size_i = 0; size_i < 25; size_i++) {
+  for (int size_i = 0; size_i < 24; size_i++) {
     int size = elements[size_i];
     for (int blocksize_i = 0; blocksize_i < 5; blocksize_i++) {
       blocksize = blocksizes[blocksize_i];
