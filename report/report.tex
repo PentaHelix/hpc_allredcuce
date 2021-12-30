@@ -242,14 +242,14 @@ The same can be done to arrive at conditions for a node to receive data. In gene
 
 \begin{itemize}
       \item A node should only receive if its children already have blocks to send up. Every two rounds, blocks move up one layer, so the first block arrive to the layer below in 2*(layer-1) rounds. \\\\
-      \texttt{round/2 >= layer - 1};
+      \texttt{round/2 >= layer - 1}\\
       \item For each block, a node receives 2 corresponding blocks from its children. So in total, it needs to receive no more than blockcount*2 blocks. \\\\
-      \texttt{recvdblocks/2 != blockcount}
-      \item Leaf nodes have no children to receive from, which is indicated by \texttt{left = right = -1}. \\\\
-      \texttt{child != -1};
+      \texttt{recvdblocks/2 != blockcount}\\
+      \item Leaf nodes have no children to receive from, which is indicated by \texttt{left/right = -1}. \\\\
+      \texttt{child != -1}
 \end{itemize}
 
-\texttt{child} is simply the left or right child, depending on if the current round is even or odd: \texttt{child = round \% 2 == 0 ? left : right}. With these conditions established, each process can run through the rounds, and determine if it needs to send/receive until all rounds are completed. In total, \texttt{rounds = 2*(treeheight + blockcount)} rounds are needed until the last block has moved from leaf to root. Since send/receive calls are blocking, rounds are implicitly synchronized and no node can get ahead of the rest. After all rounds are completed, the resulting reduction will be at the root node/process of the tree.
+\texttt{child} is simply the left or right child, depending on if the current round is even or odd: \texttt{child = round \% 2 == 0 ? left : right}. With these conditions established, each process can run through the rounds, and determine if it needs to send/receive until all rounds are completed. In total, \texttt{2*(treeheight + blockcount)} rounds are needed until the last block has moved from leaf to root. Since send/receive calls are blocking, rounds are implicitly synchronized and no node can get ahead of the rest. After all rounds are completed, the resulting reduction will be at the root node/process of the tree.
 
 \subsection{Broadcast}
 After the reduction is complete, a broadcast is necessary to move the result from the root process to all other processes. The implementation is analogous to the reduction, except that data flow is reversed - data now travels down from the root, until all blocks have reached the leaf nodes. The conditions for sending/receiving are therefore reversed.
@@ -270,59 +270,76 @@ After the reduction is complete, a broadcast is necessary to move the result fro
       \texttt{parent<node \&\& round\%2 == 1 || \\parent>node \&\& round\%2 == 0}\\
       \item A node should only receive \texttt{blockcount} nodes, and not any more. \\\\
       \texttt{recvdblocks != blockcount}\\
-      \item A node only receives if it has a parent that is ready to send this round.
+      \item A node only receives if it has a parent that is ready to send this round. \\\\
       \texttt{parent != -1 \&\& \\round/2 >= (treeheight-depth(parent))}\\
 \end{itemize}
 
 Each process proceeds exactly as with the reduction by iteration over all rounds, and issuing the send/receive operations it has determined from these conditions.
 
 \subsection{Handling incomplete trees}\label{sec:handling_incomplete}
-So far the assumption has been that the amount of processes involved in the operation neatly fit into a complete binary tree. Extending the algorithm to work on arbitrary in-order trees requires some extra constraints. The tree on which communication is modelled is still complete, however nodes in the tree which have \texttt{index >= no. of processors} do not have a corresponding process (a \textit{virtual node}). Figure \ref{fig:tree_missing_processes} illustrates how such a tree is constructed and how communication needs to be adapted to skip some nodes.
+So far the assumption has been that the amount of processes involved in the operation neatly fit into a complete binary tree. Extending the algorithm to work for an arbitrary amount of processes requires a more intricate constructions. The implementation relies heavily on having a complete in-order numbering across the nodes to compute parent and child nodes - to preserve these properties, the \texttt{p} processes are distributed onto the smallest complete binary tree with $p \le n$ nodes as shown in Figure \ref{fig:tree_missing_processes}. By construction there are enough processes to assign to every non-leaf node and the lowest layer of the tree is filled up left to right until there are no more processes left over. Any remaining leaf-nodes on the right do not have a process assigned to them \textit{(virtual nodes)}. This ensure the tree stays reasonably balanced. Process ranks are determined by traversing this sub-tree in-order as shown in Figure \ref{fig:tree_process_ranks}.
 
 \begin{figure}
       \centering
       \begin{tikzpicture}
-            \Tree[.\node (07) {07};
+            \Tree[.07
                   [.03
                         [.01 00 02 ]
-                        [.05 04 06 ]
+                        [.05 04 \sout{06} ]
                   ]
-                  [.\sout{11}
-                        [.\node(09) {09}; 08 \sout{10} ]
-                        [.\sout{13} \sout{12} \sout{14} ]
+                  [.11
+                        [.09 \sout{08} \sout{10} ]
+                        [.13 \sout{12} \sout{14} ]
                   ]
             ]
-      \draw [->, shorten >= 3pt, blue] (09) to [out=120,in=270] (07);
       \end{tikzpicture}
-      \caption{A complete binary tree mapped to only 10 processes}
+      \caption{Nodes on a complete binary tree containing only 10 processes}
       \label{fig:tree_missing_processes}
 \end{figure}
 
-Firstly, nodes >= 10 should not send or receive anything. This is trivial as no process mapped to the node means no MPI operations will be called from them. Secondly, communication from 09 needs to skip 11 and go to 07 instead. Similarly, 07 must communicate to 09 instead of 11. \\
-To accommodate this, when each process is initialized, it will check if its parent and child nodes are within the processor range - i.e. if the calculated indices are less than the process\_count. Should the parent be invalid (as would be the case when 09 calculates its parent to be 11), the real ancestor must be further up the tree meaning the parent needs to be calculated iteratively until a node mapping to a process is found. This will lead 09 to its ancestor 07. The procedure for children is similar. \\ The first insight is that only the right child can be a virtual node, since the left child has an index smaller than its parent. If the parent is non-virtual, so is its left child. If a node is virtual so is its right subtree, meaning if the right child is virtual, a real child must be somewhere in it's left subtree. This means the correct right descendent can be found by incrementally getting the left descendent of the right child until a non-virtual node is encountered. When 07 calculates its right child as 11 and determines it to be virtual, it calculates 11's next left child which is 09 and non-virtual. If a node cannot find any processes in it's right subtree, it will set it's right child to -1 signaling no communication is necessary.
+\begin{figure}
+      \centering
+      \begin{tikzpicture}
+            \Tree[.06
+                  [.03
+                        [.01 00 02 ]
+                        [.05 04 -- ]
+                  ]
+                  [.08
+                        [.07 -- -- ]
+                        [.09 -- -- ]
+                  ]
+            ]
+      \end{tikzpicture}
+      \caption{Ranks assigned to each node in the complete tree}
+      \label{fig:tree_process_ranks}
+\end{figure}
 
-All conditions defined in the previous sections now have to be adapted by switching \texttt{child} to the more general \texttt{descendent}, and \texttt{parent} to \texttt{ancestor}. Additionally, sending in the reduction implementation needs an additional constraint to make sure the ancestor is ready to receive.
+The idea is now to find an efficient way to convert back and forth between process rank and the corresponding node in the complete tree. A few key observations:
 \begin{itemize}
-      \item A node should only send if its ancestor is ready to receive.
-      \texttt{round/2 >= depth(ancestor) - 1}
+      \item Only nodes with and even index can be virtual
+      \item The rank of a process is always smaller or equal to its node index
+      \item The difference between a process rank and its node index is exactly the amount of virtual nodes with an index lower than the process's node index
 \end{itemize}
 
-\subsection{Correctness}
-To verify the correctness of this algorithm, the implementation was tested against the MPI\_Allreduce function, ensuring the same result for all combinations of various parameter settings. Each processes' vector elements were set to $v[i] = ((i + process\_rank) \% 10) + 1$
+The indices of virtual nodes can be easily calculated from the amount of processes involved in the operation. Converting from any rank to node index, it suffices to iteratively count how many virtual nodes have a lower index and add that count to the process rank.
+\begin{lstlisting}[language=C++,caption=Converting rank to node index,captionpos=b]
+int skips = 0
+while(rank+skips>=overshoot+skips*2)
+      skips++
+node = rank + skips
+\end{lstlisting}
 
-\begin{table}[h]
-      \centering
-      \begin{tabular}{ll}
-            \toprule
-            Parameter & Values \\
-            \midrule
-            vectorsize   & 1,2,...,9999,10000 \\
-            blocksize    & 1,2,...,9999,10000  \\
-            processes    & 2,3,...,9,10  \\
-            \bottomrule
-      \end{tabular}
-      \caption{Parameter values}
-\end{table}
+Here, \texttt{overshoot} is the index of the first virtual node, i.e. 6 for this example.
+Converting back is simpler as no iteration is needed. The amount of virtual nodes with a lower index is simply the amount of even nodes larger or equal to \texttt{overshoot}. Subtracting this count from the node index results in the mapped process rank. \\
+
+\begin{lstlisting}[language=C++,caption=Converting node index to rank,captionpos=b]
+int skipped = 
+      max(0,(node-overshoot+1)/2);
+return node - skipped;
+\end{lstlisting}
+
+The allreduce implementation now only needs to be extended slightly, by first converting each process rank to its node index and calculating parent/child nodes based on that. Child and parent node indices are converted back to process ranks, leaving each process with the ranks of the processes it will communicate with. This requires no additional network communication.
 
 \subsection{Performance Modelling with the Pipeline Lemma}
 The pipeline lemma can be used to model the running time of a pipelined algorithm, using a linear transmission cost model. The lemma states that given
@@ -349,7 +366,96 @@ Using the pipeline lemma one can also determine the optimal block count $M$ usin
 \end{equation}
 
 \section{Exercise 2}
+This second exercise aims to extend the algorithm by combining the reduction and broadcast into a single stage, running both operations at once. Furthermore the single binary tree is replace by two binary trees connected at the root, as described in the accompanying paper \cite{traeff2021dualroot}. Figure \ref{fig:dual_rooted_tree} shows the tree structure.
 
+\begin{figure}
+      \centering
+      \begin{tikzpicture}
+            \Tree[
+                  \edge[dashed,draw=gray];[.03
+                        [.01 00 02 ]
+                        [.04 -- -- ]
+                  ]
+                  \edge[dashed,draw=gray];[.08
+                        [.06 05 07 ]
+                        [.09 -- -- ]
+                  ]
+            ];
+      \end{tikzpicture}
+      \caption{Doubly-rooted binary tree process ranks}
+      \label{fig:dual_rooted_tree}
+\end{figure}
+
+Since the algorithm is already setup to work based on constraints, it is relatively trivial to combine both stages into one. Each process checks its constraints for both reduction and broadcast, and does either or both of them per round. The constraints only have to be adapted slightly, e.g. the broadcast stage can only begin once the first block of values has reached the dual-root. However these changes are minimal. Furthermore, due to the new tree structure, the process of mapping processes to nodes has to be adapted. In principle the mapping is unchanged and just performed for two trees instead of one. This is implemented by splitting the processes into 2 equally sized halves (for an odd number of processors, the left tree will have one additional process). The left tree can be mapped the same as for the first exercise, as the in-order numbers has the same properties. Observing that the right subtree is an exact copy of the left tree, with each node index incremented by \texttt{process\_count/2} allows us to simply subtract this offset from the process rank which yields the corresponding process in the left tree. Now children and parents can be calculated as before. This results in parent and child nodes in the left subtree. Adding the offset back onto these process ranks again yields the processes of the right subtree. This process is shown in Figure \ref{fig:dual_tree_translation}.
+
+\begin{figure}
+      \centering
+      \begin{tikzpicture}
+            \Tree[
+                  \edge[dashed,draw=gray];[. \node(03){03};
+                        [. \node(01){01}; \node(00){00}; \node(02){02}; ]
+                        [.04 -- -- ]
+                  ]
+                  \edge[dashed,draw=gray];[. \node(08){08};
+                        [. \node(06){06}; \node(05){05}; \node(07){07}; ]
+                        [.09 -- -- ]
+                  ]
+            ];
+            \draw[red,->] (06) to [out=130,in=50] node [above] {$-5$} (01);
+            \draw[blue,->] (01) to [out=210,in=90] (00);
+            \draw[blue,->] (01) to [out=-30,in=90] (02);
+            \draw[blue,->] (01) to [out=90,in=180] (03);
+            \draw[red,->] (00) to [out=-50,in=-130] node [below] {$+5$} (05);
+            \draw[red,->] (02) to [out=50,in=130] node [above] {$+5$} (07);
+            \draw[red,->] (03) to [out=50,in=130] node [above] {$+5$} (08);
+      \end{tikzpicture}
+      \caption{Process of finding parent and children for a node in the right sub tree}
+      \label{fig:dual_tree_translation}
+\end{figure}
+
+Some extra care has to be taken to account for an odd number of processors, and making sure all calculated processes actually exist.
+
+\subsection{Adjustments to the Pipeline Model}
+With this adapted implementation, the parameters for the pipeline model have changed. Most notable, there is now only a single pipeline instead of two.
+\begin{itemize}
+      \item k := maximum latency in rounds until a process receives the first block
+      \item s := number of rounds between receiving new blocks
+      \item m := size of input vectors
+      \item $\alpha,\beta$ := linear transmission cost model
+\end{itemize}
+the performance is expressed by
+\begin{equation}
+      (k-s)\alpha + 2\sqrt{s(k-s)\alpha\beta m} + s\beta m
+\end{equation}
+Both stages of the allreduce implementation (reduce and broadcast) exhibit a latency $k=2*log(p)$ where p is the number of processors and $s=2$. Summing the running time for both stages yields
+\begin{equation}
+      2(4log(p)-4\alpha + 2\sqrt{(4log(p)-4)\alpha\beta m} + 2\beta m)
+\end{equation}
+Using the pipeline lemma one can also determine the optimal block count $M$ using the identity 
+\begin{equation}
+      M = \sqrt{(k-s)\frac{\beta m}{s}\alpha}
+\end{equation}
+\begin{equation}
+      = \sqrt{(2log(p)-2)\frac{\beta m}{2}\alpha}
+\end{equation}
+
+\section{Correctness}
+To verify the correctness of the algorithms, the implementations were tested against the MPI\_Allreduce function, ensuring the same result for all combinations of various parameter settings. Each processes' vector elements were set to $v[i] = ((i + process\_rank) \% 10) + 1$
+
+\begin{table}[h]
+      \centering
+      \begin{tabular}{ll}
+            \toprule
+            Parameter & Values \\
+            \midrule
+            vectorsize   & 1,2,...,9999,10000 \\
+            blocksize    & 1,2,...,9999,10000  \\
+            processes    & 2,3,...,9,10  \\
+            \bottomrule
+      \end{tabular}
+      \caption{Parameter values}
+\end{table}
+  
 \printbibliography
 
 %----------------------------------------------------------------------------------------
