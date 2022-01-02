@@ -82,9 +82,9 @@ In the interest of legibility I will use a simple shorthand notation when descri
             $10_4$   & 10000  \\
             $0_21_3$ & 00111  \\
             \bottomrule
-            \label{tab:binary_shorthand}
       \end{tabular}
       \caption{Binary shorthand}
+      \label{tab:binary_shorthand}
 \end{table}
 
 \section*{Binary tree representation}\label{sec:binary_tree}
@@ -303,11 +303,11 @@ So far the assumption has been that the amount of processes involved in the oper
             \Tree[.06
                   [.03
                         [.01 00 02 ]
-                        [.05 04 -- ]
+                        [.05 04 --- ]
                   ]
                   [.08
-                        [.07 -- -- ]
-                        [.09 -- -- ]
+                        [.07 --- --- ]
+                        [.09 --- --- ]
                   ]
             ]
       \end{tikzpicture}
@@ -355,7 +355,7 @@ the performance is expressed by
 \end{equation}
 Both stages of the allreduce implementation (reduce and broadcast) exhibit a latency $k=2*log(p)$ where p is the number of processors and $s=2$. Summing the running time for both stages yields
 \begin{equation}
-      2(4log(p)-4\alpha + 2\sqrt{(4log(p)-4)\alpha\beta m} + 2\beta m)
+      2(2log(p)-2)\alpha + 4\sqrt{(4log(p)-4)\alpha\beta m} + 4\beta m
 \end{equation}
 Using the pipeline lemma one can also determine the optimal block count $M$ using the identity 
 \begin{equation}
@@ -374,11 +374,11 @@ This second exercise aims to extend the algorithm by combining the reduction and
             \Tree[
                   \edge[dashed,draw=gray];[.03
                         [.01 00 02 ]
-                        [.04 -- -- ]
+                        [.04 --- --- ]
                   ]
                   \edge[dashed,draw=gray];[.08
                         [.06 05 07 ]
-                        [.09 -- -- ]
+                        [.09 --- --- ]
                   ]
             ];
       \end{tikzpicture}
@@ -386,7 +386,39 @@ This second exercise aims to extend the algorithm by combining the reduction and
       \label{fig:dual_rooted_tree}
 \end{figure}
 
-Since the algorithm is already setup to work based on constraints, it is relatively trivial to combine both stages into one. Each process checks its constraints for both reduction and broadcast, and does either or both of them per round. The constraints only have to be adapted slightly, e.g. the broadcast stage can only begin once the first block of values has reached the dual-root. However these changes are minimal. Furthermore, due to the new tree structure, the process of mapping processes to nodes has to be adapted. In principle the mapping is unchanged and just performed for two trees instead of one. This is implemented by splitting the processes into 2 equally sized halves (for an odd number of processors, the left tree will have one additional process). The left tree can be mapped the same as for the first exercise, as the in-order numbers has the same properties. Observing that the right subtree is an exact copy of the left tree, with each node index incremented by \texttt{process\_count/2} allows us to simply subtract this offset from the process rank which yields the corresponding process in the left tree. Now children and parents can be calculated as before. This results in parent and child nodes in the left subtree. Adding the offset back onto these process ranks again yields the processes of the right subtree. This process is shown in Figure \ref{fig:dual_tree_translation}.
+Since the algorithm is already setup to work based on constraints, it is relatively trivial to combine both stages into one. Each process checks its constraints for both reduction and broadcast, and does either or both of them per round. The constraints only have to be adapted slightly, e.g. the broadcast stage can only begin once the first block of values has reached the dual-root. However these changes are minimal. The adapted algorithm outline is shown in Listing \ref{cod:adapted_outline}. \texttt{2*(2*treeheight + blockcount)} rounds are needed to complete the entire operation.
+
+\begin{lstlisting}[label=cod:adapted_outline,language=C++,caption=Constraint based implementation,captionpos=b]
+int sentBlocksUp = 0
+int recvdBlocksUp = 0
+int sentBlocksDown = 0
+int recvdBlocksDown = 0
+int node, parent, dual,
+      left, right, layer
+int blockcount
+for round in rounds:
+      bool shouldSendUp = ...
+      bool shouldReceiveUp = ...
+      bool shouldSendDown = ...
+      bool shouldReceiveDown = ...
+
+      if shouldSendUp: 
+            send(...)
+            sentBlocksUp++
+      if shouldReceiveUp: 
+            recv(...)
+            reduce_local(...)
+            recvdBlocksUp++
+      if shouldSendDown: 
+            send(...)
+            sentBlocksDown++
+      if shouldReceiveDown: 
+            recv(...)
+            recvdBlocksDown++
+
+\end{lstlisting}
+
+An additional buffer for intermediate values is needed for each process and the lists of blocks to be sent up is kept separately from the list of block to send down. This is necessary to allow a process to send different blocks up and down simultaneously. Furthermore, due to the new tree structure, the process of mapping processes to nodes has to be adapted. In principle the mapping is unchanged and just performed for two trees instead of one. This is implemented by splitting the processes into 2 equally sized halves (for an odd number of processors, the left tree will have one additional process). The left tree can be mapped simply as a regular in-order tree, as the node indices behave exactly like in a single binary tree. Observing that the right subtree is an exact copy of the left tree, with each node index incremented by \texttt{process\_count/2} allows us to simply subtract this offset from the process rank which yields the corresponding process in the left tree. Now children and parents can be calculated as before. This results in parent and child nodes in the left subtree. Adding the offset back onto these process ranks yields the corresponding processes of the right subtree. This process of \textit{"translate -> transform -> translate back"} is shown in Figure \ref{fig:dual_tree_translation}. By the same idea, the two root nodes can find each other simply by subtracting/adding this offset to their own ranks.
 
 \begin{figure}
       \centering
@@ -394,11 +426,11 @@ Since the algorithm is already setup to work based on constraints, it is relativ
             \Tree[
                   \edge[dashed,draw=gray];[. \node(03){03};
                         [. \node(01){01}; \node(00){00}; \node(02){02}; ]
-                        [.04 -- -- ]
+                        [.04 --- --- ]
                   ]
                   \edge[dashed,draw=gray];[. \node(08){08};
                         [. \node(06){06}; \node(05){05}; \node(07){07}; ]
-                        [.09 -- -- ]
+                        [.09 --- --- ]
                   ]
             ];
             \draw[red,->] (06) to [out=130,in=50] node [above] {$-5$} (01);
@@ -416,27 +448,9 @@ Since the algorithm is already setup to work based on constraints, it is relativ
 Some extra care has to be taken to account for an odd number of processors, and making sure all calculated processes actually exist.
 
 \subsection{Adjustments to the Pipeline Model}
-With this adapted implementation, the parameters for the pipeline model have changed. Most notable, there is now only a single pipeline instead of two.
-\begin{itemize}
-      \item k := maximum latency in rounds until a process receives the first block
-      \item s := number of rounds between receiving new blocks
-      \item m := size of input vectors
-      \item $\alpha,\beta$ := linear transmission cost model
-\end{itemize}
-the performance is expressed by
+Using the new doubly-pipelined implementation, the performance model can be adapted with new parameters. Processes still receive a new block every $s=2$ rounds, with an increased latency for the last block of $k=2*2*log(p)$ as the block has to make it up and then down the tree. However, this already accounts for both the reduction an broadcast stage of the algorithm, resulting in:
 \begin{equation}
-      (k-s)\alpha + 2\sqrt{s(k-s)\alpha\beta m} + s\beta m
-\end{equation}
-Both stages of the allreduce implementation (reduce and broadcast) exhibit a latency $k=2*log(p)$ where p is the number of processors and $s=2$. Summing the running time for both stages yields
-\begin{equation}
-      2(4log(p)-4\alpha + 2\sqrt{(4log(p)-4)\alpha\beta m} + 2\beta m)
-\end{equation}
-Using the pipeline lemma one can also determine the optimal block count $M$ using the identity 
-\begin{equation}
-      M = \sqrt{(k-s)\frac{\beta m}{s}\alpha}
-\end{equation}
-\begin{equation}
-      = \sqrt{(2log(p)-2)\frac{\beta m}{2}\alpha}
+      (4log(p)-2)\alpha + 2\sqrt{(8log(p)-4)\alpha\beta m} + 2\beta m
 \end{equation}
 
 \section{Correctness}
@@ -455,6 +469,37 @@ To verify the correctness of the algorithms, the implementations were tested aga
       \end{tabular}
       \caption{Parameter values}
 \end{table}
+
+\section{Performance}
+
+\section{Further improvement}
+A few aspects of the algorithm have potential for further improvements which could not be implemented within the scope of this exercise.
+\subsection{Tree construction}
+Binary trees could be constructed in a more balanced way, by inserting children in the last layer of the tree not simply left to right but instead spacing them as shown in Figure \ref{fig:leaf_node_spacing}. This would prevent some nodes having two child nodes while others have zero and better balance the tree.
+
+\begin{figure}
+      \centering
+      \begin{tikzpicture}
+            \Tree[.05
+                  [.02
+                        [.01 00 --- ]
+                        [.04 03 --- ]
+                  ]
+                  [.08
+                        [.07 06 --- ]
+                        [.10 09 --- ]
+                  ]
+            ]
+      \end{tikzpicture}
+      \caption{Leaf nodes with more optimal distribution}
+      \label{fig:leaf_node_spacing}
+\end{figure}
+
+\subsection{Buffers}
+More thought could be put into how each process locally manages its data. Performance could be increased by getting rid of some extra buffers that might not be strictly necessary, and doing more operations in-place.
+
+\subsection{Pipeline optimization}
+The current implementation does not pack pipeline steps as tightly as possible. For example in a broadcast each round consists \textbf{only} of sending to either the right or left child across the entire tree. More optimally, one layer could send to its left children while the layer below sends to its right children, and so on. This could allow for better batching of send and receive operations into a single sendrecv. 
   
 \printbibliography
 

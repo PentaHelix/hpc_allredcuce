@@ -7,7 +7,7 @@ benchmark-hydra: build-benchmark
 	srun -p q_student --time=5:00 -N 36 --ntasks-per-node=32 ./bin/benchmark1 logs/1_36x32.log
 
 	srun -p q_student --time=5:00 -N 20 --ntasks-per-node=1 ./bin/benchmark2 logs/2_20x1.log
-	srun -p q_student --time=5:00 -N 20 --ntasks-per-node=16 ./bin/benchmark2 logs2_20x16.log
+	srun -p q_student --time=5:00 -N 20 --ntasks-per-node=16 ./bin/benchmark2 logs/2_20x16.log
 	srun -p q_student --time=5:00 -N 20 --ntasks-per-node=32 ./bin/benchmark2 logs/2_20x32.log
 	srun -p q_student --time=5:00 -N 36 --ntasks-per-node=1 ./bin/benchmark2 logs/2_36x1.log
 	srun -p q_student --time=5:00 -N 36 --ntasks-per-node=16 ./bin/benchmark2 logs/2_36x16.log

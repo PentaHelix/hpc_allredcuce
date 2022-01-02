@@ -28,7 +28,7 @@ void run_benchmark(char* filename) {
   const int blocksizes[] = {250, 500, 750, 2500, 16000};
 
   // vector size
-  for (int size_i = 0; size_i < 25; size_i++) {
+  for (int size_i = 0; size_i < 23; size_i++) {
     int size = elements[size_i];
     for (int blocksize_i = 0; blocksize_i < 5; blocksize_i++) {
       blocksize = blocksizes[blocksize_i];
@@ -40,33 +40,36 @@ void run_benchmark(char* filename) {
 
       double times[3] = {0.0, 0.0, 0.0};
 
-      for (int i = 0; i < 8; i++) {
-        double measured[3];
+      for (int i = 0; i < 6; i++) {
+        double measured[3] = {0.0, 0.0, 0.0};
         MPI_Barrier(MPI_COMM_WORLD);
         measured[0] = MPI_Wtime();
         AllReduce(input, out0, size, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
         measured[0] = MPI_Wtime() - measured[0];
 
-        MPI_Barrier(MPI_COMM_WORLD);
-        measured[1] = MPI_Wtime();
-        MPI_Allreduce(input, out1, size, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-        measured[1] = MPI_Wtime() - measured[1];
+        if (blocksize_i == 0) {
+          MPI_Barrier(MPI_COMM_WORLD);
+          measured[1] = MPI_Wtime();
+          MPI_Allreduce(input, out1, size, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
+          measured[1] = MPI_Wtime() - measured[1];
 
-        MPI_Barrier(MPI_COMM_WORLD);
-        measured[2] = MPI_Wtime();
-        MPI_Reduce(input, out2, size, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
-        MPI_Bcast(out2, size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-        measured[2] = MPI_Wtime() - measured[2];
+          MPI_Barrier(MPI_COMM_WORLD);
+          measured[2] = MPI_Wtime();
+          MPI_Reduce(input, out2, size, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+          MPI_Bcast(out2, size, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+          measured[2] = MPI_Wtime() - measured[2];
 
+        }
+        
         MPI_Allreduce(MPI_IN_PLACE, measured, 3, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-
+        
         times[0] += measured[0];
         times[1] += measured[1];
         times[2] += measured[2];
       }
 
       MPI_Barrier(MPI_COMM_WORLD);
-      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf;%lf\n", size, blocksize, times[0]/8.0*1000, times[1]/8.0*1000, times[2]/8.0*1000);
+      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf;%lf\n", size, blocksize, times[0]/6.0*1000, times[1]/6.0*1000, times[2]/6.0*1000);
     }
   }
 
