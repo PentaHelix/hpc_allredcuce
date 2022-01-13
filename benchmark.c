@@ -40,7 +40,7 @@ void run_benchmark(char* filename) {
 
       double times[3] = {0.0, 0.0, 0.0};
 
-      for (int i = 0; i < 3; i++) {
+      for (int i = 0; i < 6; i++) {
         double measured[3] = {0.0, 0.0, 0.0};
         MPI_Barrier(MPI_COMM_WORLD);
         measured[0] = MPI_Wtime();
@@ -69,7 +69,7 @@ void run_benchmark(char* filename) {
       }
 
       MPI_Barrier(MPI_COMM_WORLD);
-      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf;%lf\n", size, blocksize, times[0]/3.0*1000, times[1]/3.0*1000, times[2]/3.0*1000);
+      if (rank == 0) fprintf(fptr, "%d;%d;%lf;%lf;%lf\n", size, blocksize, times[0]/6.0*1000, times[1]/6.0*1000, times[2]/6.0*1000);
     }
   }
 
